@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><title>Reddit fixture</title></head><body>
+  <shreddit-post id="post-reddit">
+    <h1 slot="title">A practical repair note from this weekend</h1>
+    <div slot="text">
+      I replaced the loose hinge on Saturday. The supplied screws were too short, so I reused two older ones from the garage.
+      It took longer than expected, but the door finally closes without scraping the floor.
+    </div>
+  </shreddit-post>
+  <shreddit-comment id="comment-parent">
+    <div slot="comment">I had the same problem, although a washer fixed mine before I replaced anything.</div>
+    <shreddit-comment id="comment-child">
+      <div slot="comment">Good tip. I will try that if it starts scraping again.</div>
+    </shreddit-comment>
+  </shreddit-comment>
+</body></html>

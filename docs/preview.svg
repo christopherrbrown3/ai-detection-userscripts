@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
+  <title id="title">Illustrated AI-style signal badge and analysis popover</title>
+  <desc id="desc">A social post with an AI Score six-segment meter beside an accessible analysis panel showing three filled yellow segments, the matched cue families, fixed sample class, and local settings.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef2ff"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <linearGradient id="score" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#93c5fd"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0f172a" flood-opacity=".16"/>
+    </filter>
+    <style>
+      .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .muted { fill: #64748b; }
+      .tiny { font-size: 13px; font-weight: 700; letter-spacing: 1.1px; }
+      .body { font-size: 16px; }
+      .small { font-size: 14px; }
+      .heading { font-size: 22px; font-weight: 750; }
+    </style>
+  </defs>
+  <rect width="1200" height="640" rx="28" fill="url(#page)"/>
+  <circle cx="1080" cy="95" r="130" fill="#c7d2fe" opacity=".45"/>
+  <circle cx="120" cy="590" r="180" fill="#dbeafe" opacity=".5"/>
+
+  <g filter="url(#shadow)">
+    <rect x="72" y="92" width="600" height="400" rx="22" fill="#fff"/>
+  </g>
+  <circle cx="123" cy="145" r="25" fill="#e0e7ff"/>
+  <path d="M112 149c7-13 17-13 24 0" fill="none" stroke="#4f46e5" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="117" cy="139" r="2" fill="#4f46e5"/>
+  <circle cx="131" cy="139" r="2" fill="#4f46e5"/>
+  <text x="162" y="141" class="ui body" font-weight="750">Alex Example</text>
+  <text x="162" y="163" class="ui small muted">Today · Visible to anyone</text>
+
+  <g transform="translate(357 124)">
+    <rect width="266" height="40" rx="20" fill="#eff6ff" stroke="#93c5fd"/>
+    <circle cx="19" cy="20" r="5" fill="#2563eb"/>
+    <circle cx="19" cy="20" r="9" fill="none" stroke="#bfdbfe" stroke-width="4"/>
+    <text x="36" y="25" class="ui small" font-weight="800" fill="#64748b">AI Score</text>
+    <rect x="105" y="14" width="10" height="13" rx="2" fill="#ca8a04" stroke="#ca8a04"/>
+    <rect x="119" y="14" width="10" height="13" rx="2" fill="#ca8a04" stroke="#ca8a04"/>
+    <rect x="133" y="14" width="10" height="13" rx="2" fill="#ca8a04" stroke="#ca8a04"/>
+    <rect x="147" y="14" width="10" height="13" rx="2" fill="#fef9c3" stroke="#cbd5e1"/>
+    <rect x="161" y="14" width="10" height="13" rx="2" fill="#fef9c3" stroke="#cbd5e1"/>
+    <rect x="175" y="14" width="10" height="13" rx="2" fill="#fef9c3" stroke="#cbd5e1"/>
+  </g>
+
+  <text x="108" y="226" class="ui body">Here are a few lessons from rebuilding our onboarding flow.</text>
+  <text x="108" y="262" class="ui body">The cleanest version was not the first version, and the small</text>
+  <text x="108" y="290" class="ui body">exceptions mattered more than the polished summary.</text>
+  <rect x="108" y="330" width="480" height="11" rx="5.5" fill="#e2e8f0"/>
+  <rect x="108" y="357" width="433" height="11" rx="5.5" fill="#e2e8f0"/>
+  <rect x="108" y="384" width="505" height="11" rx="5.5" fill="#e2e8f0"/>
+  <rect x="108" y="411" width="342" height="11" rx="5.5" fill="#e2e8f0"/>
+  <path d="M415 171 C480 198 585 198 690 179" fill="none" stroke="#818cf8" stroke-width="3" stroke-dasharray="7 8"/>
+
+  <g filter="url(#shadow)">
+    <rect x="690" y="60" width="438" height="520" rx="22" fill="#fff"/>
+  </g>
+  <text x="720" y="95" class="ui tiny muted">LOCAL ANALYSIS</text>
+  <text x="720" y="128" class="ui heading">AI cue analysis</text>
+  <circle cx="1091" cy="102" r="17" fill="#f1f5f9"/>
+  <path d="m1085 96 12 12m0-12-12 12" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="690" y1="150" x2="1128" y2="150" stroke="#d8deea"/>
+
+  <text x="720" y="198" class="ui" font-size="16" font-weight="800">AI Score</text>
+  <rect x="810" y="177" width="22" height="22" rx="4" fill="#ca8a04"/>
+  <rect x="837" y="177" width="22" height="22" rx="4" fill="#ca8a04"/>
+  <rect x="864" y="177" width="22" height="22" rx="4" fill="#ca8a04"/>
+  <rect x="891" y="177" width="22" height="22" rx="4" fill="#fef9c3" stroke="#cbd5e1"/>
+  <rect x="918" y="177" width="22" height="22" rx="4" fill="#fef9c3" stroke="#cbd5e1"/>
+  <rect x="945" y="177" width="22" height="22" rx="4" fill="#fef9c3" stroke="#cbd5e1"/>
+  <text x="720" y="226" class="ui small muted">Long sample · 126 words and 8 sentences</text>
+
+  <rect x="720" y="249" width="378" height="52" rx="10" fill="#f5f3ff"/>
+  <rect x="720" y="249" width="4" height="52" rx="2" fill="#7c3aed"/>
+  <text x="738" y="271" class="ui small" font-weight="700">Explainable heuristic</text>
+  <text x="738" y="291" class="ui" font-size="12" fill="#475569">Every result maps to the observed cues below.</text>
+
+  <text x="720" y="337" class="ui small" font-weight="800">Cues found</text>
+  <circle cx="727" cy="362" r="3" fill="#7c3aed"/>
+  <text x="739" y="367" class="ui small">Formulaic framing · “key takeaways”</text>
+  <circle cx="727" cy="389" r="3" fill="#7c3aed"/>
+  <text x="739" y="394" class="ui small">Parallel rhetorical rhythm · repeated openings</text>
+
+  <line x1="720" y1="420" x2="1098" y2="420" stroke="#e2e8f0"/>
+  <text x="720" y="451" class="ui small" font-weight="800">Evidence coverage</text>
+  <circle cx="727" cy="476" r="3" fill="#64748b"/>
+  <text x="739" y="481" class="ui small">Long = at least 80 words and 4 sentences</text>
+  <circle cx="727" cy="503" r="3" fill="#64748b"/>
+  <text x="739" y="508" class="ui small">The match count is literal, not a probability</text>
+
+  <rect x="720" y="531" width="177" height="30" rx="9" fill="#f1f5f9"/>
+  <text x="737" y="551" class="ui" font-size="12" font-weight="750">Technical details</text>
+  <rect x="913" y="531" width="185" height="30" rx="9" fill="#f1f5f9"/>
+  <text x="930" y="551" class="ui" font-size="12" font-weight="750">Local-only analysis</text>
+</svg>

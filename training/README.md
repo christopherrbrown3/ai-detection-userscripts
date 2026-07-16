@@ -1,53 +1,129 @@
-# Offline training pipeline (optional)
+# Offline training and calibration
 
-The userscripts ship with **hand-tuned** linear weights so they work out of the box. This folder provides an **offline** pipeline to train and export calibrated logistic-regression weights from labeled datasets, then copy them back into the userscripts (vendored inline; no runtime downloads).
+The installed userscripts never download a model or transmit text. This directory trains compact logistic-regression models offline and exports their weights, character n-gram profile, calibration parameters, and false-positive-controlled thresholds into the self-contained scripts.
 
-## What this pipeline does
-- Extracts the same **scaled feature vector** used by the userscripts.
-- Trains `sklearn.linear_model.LogisticRegression` models for:
-  - LinkedIn post-like text
-  - LinkedIn comment-like text
-  - Reddit post-like text
-  - Reddit comment-like text
-  - X post-like text
-  - X reply-like text
-- Exports:
-  - `weights.json` (intercept + per-feature weights)
-  - `thresholds.json` (label cutoffs; tuned for higher recall)
-  - `report.json` (basic metrics + length bucket breakdown)
+## Install
 
-## Requirements
-- Python 3.10+
-- `pip install -r training/requirements.txt`
+```bash
+python3 -m pip install -r training/requirements.txt
+```
 
-## Data format
-Input is JSON Lines (`.jsonl`) with (at minimum):
+## Recommended record schema
+
+One JSON object per line:
+
 ```json
-{"text": "some content...", "label": 0}
-{"text": "ai-ish content...", "label": 1}
+{
+  "text": "The post or comment text",
+  "authorship": "human",
+  "platform": "reddit",
+  "kind": "comment",
+  "source_id": "original-document-1042",
+  "generator": "human",
+  "language": "en",
+  "attack": "none"
+}
 ```
 
-- `label`: `0` = human-written, `1` = LLM-generated/LLM-assisted (your choice; be consistent).
-- Optional fields: `platform` (`linkedin`/`reddit`/`x`) and `kind` (`post`/`comment`).
+Required:
 
-## Run
+- `text`
+- `authorship` (`human`, `ai`, or `mixed`) or a `label` (`0`, `1`, or `2`)
+
+Strongly recommended:
+
+- `platform`: `linkedin`, `reddit`, or `x`
+- `kind`: `post` or `comment` (`reply` is normalized to `comment`)
+- `source_id`: shared by an original and every derived/paraphrased/attacked version; prevents split leakage
+- `generator`, `language`, and `attack`: used for held-out slice reporting
+
+Mixed, assisted, polished, and hybrid records are preserved as class `2` for evaluation. The binary base classifier trains only on human (`0`) and fully generated (`1`) records.
+
+## Normalize a downloaded benchmark
+
+`prepare_dataset.py` reads CSV, JSON, JSONL, or Parquet and maps common column names. Explicit mappings are available when a source uses different names.
+
 ```bash
-# Run from the repo root (either invocation works):
-python3 training/train.py --input path/to/data.jsonl --output-dir training/out
-# OR:
-python3 -m training.train --input path/to/data.jsonl --output-dir training/out
+python3 training/prepare_dataset.py \
+  --input path/to/multisocial.parquet \
+  --output training/data/multisocial.jsonl \
+  --text-field text \
+  --label-field label \
+  --platform-field platform \
+  --generator-field model \
+  --language-field language
 ```
 
-Then use:
+MultiSocial does not contain LinkedIn. Treat its X/Twitter data as an X baseline, use Reddit-oriented benchmark material only for Reddit, and curate matched LinkedIn samples rather than pretending cross-platform transfer is reliable.
+
+The official MultiSocial files are access-restricted and limited to approved research use. Request access from its Zenodo record and do not commit or redistribute the data. The importer is intentionally local-only.
+
+## Optional surface-attack augmentation
+
+The deterministic augmenter adds punctuation-drop, case-variation, and single-typo variants. It preserves `source_id`, so grouped splitting keeps variants out of other splits.
+
 ```bash
-python3 training/export_js.py training/out/weights.json
+python3 training/augment.py \
+  --input training/data/multisocial.jsonl \
+  --output training/data/multisocial-augmented.jsonl
 ```
-…to print a JS snippet you can paste into:
-- `linkedin-ai-heuristic.userscripts.user.js`
-- `reddit-ai-heuristic.userscripts.user.js`
-- `x-ai-heuristic.userscripts.user.js`
 
-## Notes
-- This repo does **not** include datasets. Use any labeled sources you have access to (public benchmarks or your own curated samples).
-- For “higher accuracy” without false accusations, consider using a 3-way label strategy offline (human / mixed / AI) and exporting thresholds that map to the userscript’s “mixed signals” UX.
-- By default, `train.py` requires at least 80 rows per model subset. Use `--min-total` to lower this for quick experiments.
+This is not a substitute for testing paraphrases, human edits, personalized output, or unseen fine-tuned generators.
+
+## Train, calibrate, and evaluate
+
+```bash
+python3 training/train.py \
+  --input training/data/combined.jsonl \
+  --output-dir training/out \
+  --group-field source_id \
+  --target-fpr 0.01
+```
+
+The default split is 60% training, 20% calibration, and 20% test. When repeated `source_id` values exist, entire groups remain in one split. Otherwise a stratified random split is used.
+
+The binary classifier uses balanced class weights by default; held-out calibration and human-only threshold selection still determine the displayed score and strong cutoff. Use `--class-weight none` only for an intentional ablation.
+
+Outputs:
+
+- `weights.json`: structured weights, 128 hashed character 3–5-gram weights, and held-out sigmoid calibration
+- `thresholds.json`: moderate/strong cutoffs and calibration-set false-positive diagnostics
+- `report.json`: overall and slice metrics for the untouched test split
+
+Models with fewer than 300 binary rows are skipped by default. Lower `--min-total` only for development—not for a release model.
+
+## Export a validated model
+
+Print a JavaScript constant:
+
+```bash
+python3 training/export_js.py training/out/weights.json \
+  --thresholds-json training/out/thresholds.json \
+  --model reddit:post \
+  --var MODEL_REDDIT_POST
+```
+
+Update the shared model bundle and rebuild every userscript:
+
+```bash
+python3 training/export_js.py training/out/weights.json \
+  --thresholds-json training/out/thresholds.json \
+  --model reddit:post \
+  --models-file models/default-models.json
+
+python3 scripts/build_userscripts.py
+```
+
+The exporter refuses uncalibrated models and models without held-out thresholds.
+
+## Release gate
+
+Do not replace the experimental baseline until:
+
+- source-group overlap is zero
+- the requested FPR is resolvable with the number of held-out human samples
+- test FPR and confidence intervals are acceptable on each platform and length bucket
+- unseen-generator, paraphrase, mixed, personalized, and multilingual/ELL slices are documented
+- JavaScript/Python parity and all DOM fixture tests pass
+
+See [../docs/benchmarking.md](../docs/benchmarking.md) for the complete matrix.

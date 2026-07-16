@@ -5,3 +5,7 @@ training/out/
 .env
 .venv/
 whitepapers/*.pdf
+node_modules/
+training/data/
+coverage/
+.coverage
