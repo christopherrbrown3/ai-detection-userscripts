@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         Reddit AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.5.0
+// @version      0.5.1
 // @description  Adds an experimental, privacy-preserving AI-style signal to Reddit posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -1007,8 +1007,28 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge__text { overflow-wrap: anywhere; }
+    .ai-heuristic-badge__text { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
     .ai-heuristic-badge__coverage { color: var(--aih-muted); font-weight: 500; }
+    .ai-heuristic-meter {
+      align-items: center;
+      display: inline-grid;
+      flex: 0 0 auto;
+      gap: 2px;
+      grid-template-columns: repeat(6, 8px);
+      vertical-align: middle;
+    }
+    .ai-heuristic-meter__segment {
+      background: transparent;
+      border: 1px solid var(--aih-muted);
+      border-radius: 2px;
+      box-sizing: border-box;
+      height: 12px;
+      width: 8px;
+    }
+    .ai-heuristic-meter__segment[data-filled="true"] {
+      background: var(--aih-accent);
+      border-color: var(--aih-accent);
+    }
     .ai-heuristic-badge[data-cue-tone="neutral"],
     .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
     .ai-heuristic-badge[data-cue-tone="matched"],
@@ -1214,6 +1234,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     @media (forced-colors: active) {
       .ai-heuristic-badge, .ai-heuristic-popover { border: 1px solid ButtonText; forced-color-adjust: auto; }
       .ai-heuristic-badge__dot { background: ButtonText; box-shadow: none; }
+      .ai-heuristic-meter__segment { background: Canvas; border-color: ButtonText; forced-color-adjust: none; }
+      .ai-heuristic-meter__segment[data-filled="true"] { background: ButtonText; border-color: ButtonText; }
     }
   `;
 
@@ -1272,6 +1294,22 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
   }
 
+  function cueScore(cues) {
+    return Math.round(100 * cues.families.length / cues.totalFamilies);
+  }
+
+  function createCueMeter(cues) {
+    const meter = createElement('span', 'ai-heuristic-meter');
+    // The button's accessible name already describes the score and exact count.
+    meter.setAttribute('aria-hidden', 'true');
+    for (let index = 0; index < cues.totalFamilies; index += 1) {
+      const segment = createElement('span', 'ai-heuristic-meter__segment');
+      segment.dataset.filled = String(index < cues.families.length);
+      meter.appendChild(segment);
+    }
+    return meter;
+  }
+
   function createBadge(analysis) {
     const badge = createElement('button', 'ai-heuristic-badge');
     const cues = analysis.cueAssessment;
@@ -1282,13 +1320,21 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'Style cues: ' + cues.families.length + ' matched' : 'Style cues: not assessed';
+    const label = cues.assessed ? 'AI Score: ' + cueScore(cues) + '/100' : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
+    if (cues.assessed) {
+      badge.appendChild(createCueMeter(cues));
+      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', 'Heuristic'));
+    }
     if (cues.coverage.level === 'short' || !cues.assessed) {
       badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
     }
-    badge.setAttribute('aria-label', label + '. ' + cues.coverage.text + '. Open details.');
-    badge.title = 'Open local style analysis';
+    const accessibleScore = cues.assessed
+      ? 'AI Score: ' + cueScore(cues) + ' out of 100. Heuristic, not an authorship probability. ' +
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched'
+      : label;
+    badge.setAttribute('aria-label', accessibleScore + '. ' + cues.coverage.text + '. Open details.');
+    badge.title = 'Open local style analysis. AI Score measures style cues, not authorship probability.';
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1442,7 +1488,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'Style cues');
+    const title = createElement('h2', '', 'AI Score');
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -1457,11 +1503,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      cues.assessed ? cues.families.length + ' matched · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+      cues.assessed ? cueScore(cues) + '/100 · Heuristic · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+    if (cues.assessed) {
+      body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Each filled bar represents one family. ' +
+        'The score is their share of the total, rounded to 0–100.'));
+    }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
-      'These patterns describe writing style and also occur in human writing. They do not establish authorship.'));
+      'This is not the probability that AI wrote this text. These patterns also occur in human writing and do not establish authorship.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -2145,5 +2196,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.1",distribution:"targeted"});
 })();
