@@ -2,6 +2,8 @@
 
 Validated on 2026-09-26 against v0.4.0 commit `52c54c3af6315f53550c1d25fa556e237a670afc`. Consolidation preserves the cue rules; this report measures functionality and browser work, not authorship accuracy.
 
+Subsequent native Safari checks and the v0.5.1 badge update are recorded in [Safari validation](safari-validation.md). The limitations below describe the original v0.5.0 release at the time it was validated.
+
 ## Automated gates
 
 - **85 JavaScript tests passed**, including existing detector/runtime tests, all known layout fixtures through source/combined/targeted builds, and generated-bundle baseline comparisons for extracted text, exclusions, cue families/spans, sample/language states, and metrics.

@@ -6,9 +6,39 @@ import { loadDom as loadSourceDom, loadGeneratedDom, loadFixture, closeDoms } fr
 afterEach(closeDoms);
 
 for (const distribution of ['source', 'combined', 'targeted']) describe(distribution + ' layouts', () => {
-  const loadDom = (platform, html, url) => distribution === 'source'
-    ? loadSourceDom(platform, html, url)
-    : loadGeneratedDom(platform, html, url, { distribution });
+  const loadDom = (platform, html, url, options = {}) => distribution === 'source'
+    ? loadSourceDom(platform, html, url, options)
+    : loadGeneratedDom(platform, html, url, { ...options, distribution });
+
+test('LinkedIn observes real cards inside display-contents feed wrappers', async () => {
+  let io;
+  const { window } = loadDom('linkedin', loadFixture('linkedin-wrapped-feed.html'), 'https://www.linkedin.com/feed/foryou/', {
+    autoScan: false,
+    setup(window) {
+      window.IntersectionObserver = class {
+        constructor(callback) { this.callback = callback; this.observed = new Set(); io = this; }
+        observe(element) { this.observed.add(element); }
+        unobserve(element) { this.observed.delete(element); }
+        disconnect() { this.observed.clear(); }
+      };
+    }
+  });
+  const { document, __controller } = window;
+  const cards = [...document.querySelectorAll('[role="listitem"]')];
+  assert.deepEqual([...io.observed].map(node => node.id), cards.map(node => node.id));
+  assert.equal(document.querySelector('.ai-heuristic-badge'), null);
+  io.callback(cards.map(target => ({ target, isIntersecting: true })));
+  const deadline = Date.now() + 2000;
+  while (document.querySelectorAll('.ai-heuristic-badge').length !== 2 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(document.querySelectorAll('.ai-heuristic-badge').length, 2);
+  for (const card of cards) {
+    assert.equal(card.querySelectorAll('.ai-heuristic-badge').length, 1);
+    assert.ok(__controller.getAnalysis(card).sourceText);
+  }
+  assert.equal(__controller.getAnalysis(document.getElementById('feed-wrapper-one')), undefined);
+});
 
 test('LinkedIn scores the post and nested comment independently', () => {
   const dom = loadDom('linkedin', loadFixture('linkedin.html'), 'https://www.linkedin.com/feed/');
@@ -168,8 +198,9 @@ test('badges open a keyboard-accessible dialog with settings', () => {
   const article = document.querySelector('#tweet-1');
   const badge = document.querySelector('.ai-heuristic-badge');
   const analysis = __controller.getAnalysis(article);
-  assert.match(badge.textContent, /Style cues: 0 matched/);
-  assert.match(badge.getAttribute('aria-label'), /Style cues/);
+  assert.match(badge.textContent, /AI Score: 0\/100/);
+  assert.match(badge.textContent, /Heuristic/);
+  assert.match(badge.getAttribute('aria-label'), /0 out of 100.*not an authorship probability.*0 of 6 pattern families matched/);
   badge.click();
   const dialog = document.querySelector('[role="dialog"]');
   assert.ok(dialog);
@@ -177,12 +208,40 @@ test('badges open a keyboard-accessible dialog with settings', () => {
   assert.equal(dialog.querySelector('select[aria-label="Detector sensitivity"]'), null);
   assert.match(dialog.textContent, /matched/i);
   assert.match(dialog.textContent, /do not establish authorship/i);
+  assert.match(dialog.textContent, /not the probability that AI wrote this text/i);
   assert.match(dialog.textContent, /Observed patterns/i);
   assert.doesNotMatch(dialog.textContent, /Local style segments/i);
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(document.querySelector('[role="dialog"]'), null);
   assert.equal(badge.getAttribute('aria-expanded'), 'false');
   dom.window.close();
+});
+
+test('AI Score and six bars agree with the cue evidence and distinguish unassessed text', () => {
+  const html = `<!doctype html><body>
+    <article role="article" id="scored"><div data-testid="tweetText">
+      Here are the key takeaways from this week. In conclusion, we need to check the new release with the support team before we ship it to everyone.
+    </div></article>
+    <article role="article" id="unassessed"><div data-testid="tweetText">No puedo asistir a la reunión de mañana.</div></article>
+  </body>`;
+  const { window } = loadDom('x', html, 'https://x.com/home');
+  const { document, __controller } = window;
+  const post = document.getElementById('scored');
+  const cues = __controller.getAnalysis(post).cueAssessment;
+  assert.equal(cues.families.length, 1);
+  const badge = post.querySelector('.ai-heuristic-badge');
+  assert.match(badge.textContent, /AI Score: 17\/100/);
+  assert.match(badge.getAttribute('aria-label'), /17 out of 100.*1 of 6 pattern families matched/);
+  assert.equal(badge.querySelectorAll('.ai-heuristic-meter__segment').length, 6);
+  assert.equal(badge.querySelectorAll('[data-filled="true"]').length, 1);
+  badge.click();
+  const dialog = document.querySelector('[role="dialog"]');
+  assert.match(dialog.textContent, /17\/100.*1 of 6 pattern families matched/);
+  assert.match(dialog.textContent, /share of the total, rounded to 0–100/);
+  const unknown = document.querySelector('#unassessed .ai-heuristic-badge');
+  assert.match(unknown.textContent, /AI Score: not assessed.*Language uncertain/);
+  assert.doesNotMatch(unknown.textContent, /\/100/);
+  assert.equal(unknown.querySelector('.ai-heuristic-meter'), null);
 });
 
 test('a settings launcher remains when badge filters are active', () => {

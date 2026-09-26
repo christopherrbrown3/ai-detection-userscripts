@@ -1,13 +1,15 @@
 function createPlatformAdapter() {
   'use strict';
 
-  const postSelector = [
-    '[data-testid="mainFeed"] > div',
-    '[role="listitem"]:has([data-testid="expandable-text-box"])',
+  const feedChildSelector = '[data-testid="mainFeed"] > div';
+  const modernPostSelector = '[role="listitem"]:has([data-testid="expandable-text-box"])';
+  const cardSelector = [
+    modernPostSelector,
     'div.feed-shared-update-v2',
     'article[data-urn*="urn:li:activity"]',
     'main article[data-id*="urn:li:activity"]'
   ].join(', ');
+  const postSelector = feedChildSelector + ', ' + cardSelector;
   const commentSelector = [
     'li.comments-comment-item',
     'div.comments-comment-item',
@@ -88,7 +90,11 @@ function createPlatformAdapter() {
     commentSelector,
     isTopLevel(element, kind) {
       if (kind === 'comment') return true;
-      const parentPost = element.parentElement && element.parentElement.closest(postSelector);
+      // Current feeds put visible list-item cards inside display:contents
+      // wrappers. Observe the cards, since those wrappers have no viewport box.
+      if (element.matches(feedChildSelector) && !element.matches(cardSelector) && element.querySelector(cardSelector)) return false;
+      const ownershipSelector = element.matches(cardSelector) ? cardSelector : postSelector;
+      const parentPost = element.parentElement && element.parentElement.closest(ownershipSelector);
       return !parentPost && !element.closest(commentSelector);
     },
     extractContent(element, kind) {

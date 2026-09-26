@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## 0.5.1 - 2026-09-26
+
+- Restore the **AI Score** badge label and six-bar meter, with a readable 0–100 heuristic score derived from the matched pattern-family count. Explain the calculation and distinguish it from authorship probability. Preserve short-sample warnings, a separate unassessed state, keyboard behavior, and high-contrast support.
+- Fix missing LinkedIn feed badges when visible cards sit inside zero-size `display: contents` wrappers. Observe the actual cards and keep one independent analysis per post.
+- Add source and generated-bundle regressions for wrapped LinkedIn feeds, score/bar agreement, and unassessed text. Record native Safari/Userscripts checks in [Safari validation](docs/safari-validation.md).
+
 ## 0.5.0 - 2026-09-26
 
 - Make one combined userscript the default for LinkedIn, X/Twitter, and Reddit. Preserve optional targeted files, their update identities, and existing host scopes.
