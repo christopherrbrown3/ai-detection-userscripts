@@ -1,10 +1,10 @@
-// Generated file. Edit src/, models/default-models.json, or scripts/build_userscripts.py instead.
+// Generated file. Edit src/, models/, or scripts/build_userscripts.py instead.
 // Installation and documentation: https://github.com/christopherrbrown3/ai-detection-userscripts
 
 // ==UserScript==
 // @name         X AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.4.0
+// @version      0.5.0
 // @description  Adds an experimental, privacy-preserving AI-style signal to X/Twitter posts and replies.
 // @author       christopherrbrown3
 // @license      MIT
@@ -24,8 +24,6 @@
 
 (function () {
   'use strict';
-
-  const AI_HEURISTIC_MODELS = {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}};
 
 function createDetectorEngine(options) {
   'use strict';
@@ -773,6 +771,7 @@ function createDetectorEngine(options) {
     const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
     for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
     const shared = {
+      modelAvailable: Boolean(selected.model),
       sourceText: extracted.parsed.raw, excluded,
       context: safeContext, cueAssessment, metrics: extracted.metrics
     };
@@ -875,7 +874,7 @@ function aiHeuristicReadContent(node) {
       return;
     }
     if (current.nodeType !== 1) return;
-    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"]')) return;
+    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"], input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
     if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
       excluded.quotes += 1;
       parts.push('\n');
@@ -908,13 +907,25 @@ function aiHeuristicTextContent(node) {
   return aiHeuristicReadContent(node).text;
 }
 
-function startAIHeuristic(platformAdapter, modelBundle) {
+function startAIHeuristic(platformAdapter, modelBundle, options) {
   'use strict';
+  options = options || {};
 
   const adapter = platformAdapter;
+  const instance = options.instance || 'aih-' + Math.random().toString(36).slice(2);
+  const owned = '[data-ai-style-instance="' + instance + '"]';
+  let notice = options.notice || '';
+  let legacyBlocked = false;
+  let running = false;
+  let rootObserver = null;
+  let routeTimer = null;
+  let bodyReference = null;
+  let lastUrl = location.href;
+  const reportedFailures = new Set();
   const engine = createDetectorEngine({ platform: adapter.id, modelBundle });
   const storageKey = `ai-heuristic:${adapter.id}:settings:v2`;
   const defaults = {
+    enabled: options.enabledByDefault !== false,
     sensitivity: 'balanced',
     analyzeComments: true,
     hideInsufficient: false,
@@ -929,7 +940,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   let stopped = false;
   let started = false;
   const tracked = new Set();
-  const visible = new WeakSet();
+  let visible = new WeakSet();
   const dirty = new Set();
   const pending = new Set();
   const analysisCache = new Map();
@@ -1206,31 +1217,35 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     }
   `;
 
-  function loadSettings() {
-    try {
-      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
-      return { ...defaults, ...stored };
-    } catch (error) {
-      return { ...defaults };
+  function normalizeSettings(value) {
+    const stored = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const result = { ...defaults, ...stored };
+    for (const key of ['enabled', 'analyzeComments', 'hideInsufficient', 'hideLow']) {
+      if (typeof result[key] !== 'boolean') result[key] = defaults[key];
     }
+    if (!['balanced', 'conservative', 'aggressive'].includes(result.sensitivity)) result.sensitivity = defaults.sensitivity;
+    return result;
+  }
+
+  function loadSettings() {
+    try { return normalizeSettings(JSON.parse(localStorage.getItem(storageKey) || '{}')); }
+    catch (_) { return { ...defaults }; }
   }
 
   function saveSettings(next) {
-    settings = { ...settings, ...next };
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(settings));
-    } catch (error) {
-      // Storage may be unavailable in private browsing; settings still work for this page.
-    }
-    syncSettingsLauncher();
-    resetAndRescan();
+    settings = normalizeSettings({ ...settings, ...next });
+    try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
+    catch (_) { /* Private browsing/storage denial: keep this tab's preferences. */ }
+    closePopover(false);
+    refreshState(true);
   }
 
   function injectStyles() {
-    if (document.querySelector(`style[data-ai-heuristic-style="${adapter.id}"]`)) return;
+    if (document.querySelector('style' + owned)) return;
     const style = document.createElement('style');
     style.dataset.aiHeuristicStyle = adapter.id;
     style.dataset.aiHeuristicUi = '1';
+    style.dataset.aiStyleInstance = instance;
     style.textContent = STYLE;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -1246,6 +1261,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
 
   function createElement(tag, className, text) {
     const element = document.createElement(tag);
+    element.dataset.aiStyleInstance = instance;
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
@@ -1324,7 +1340,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       lines.splice(2, 0,
         `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
-        `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
+        analysis.modelAvailable === false ? 'Diagnostic model: unavailable for this platform' :
+          `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
       );
     }
     return lines.join('\n');
@@ -1336,6 +1353,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     const controls = createElement('div', 'ai-heuristic-popover__settings');
 
     const checks = [
+      ['enabled', 'Enable style cues on this site'],
       ['analyzeComments', 'Analyze comments and replies'],
       ['hideInsufficient', 'Hide short or unassessed samples'],
       ['hideLow', 'Hide assessed posts with no cues']
@@ -1353,21 +1371,11 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     return section;
   }
 
-  function filtersAreActive() {
-    return settings.analyzeComments !== defaults.analyzeComments ||
-      settings.hideInsufficient !== defaults.hideInsufficient ||
-      settings.hideLow !== defaults.hideLow;
-  }
-
   function syncSettingsLauncher() {
-    const selector = `.ai-heuristic-launcher[data-ai-platform="${adapter.id}"]`;
-    const existing = document.querySelector(selector);
-    if (!filtersAreActive()) {
-      if (existing) existing.remove();
-      return;
-    }
-    if (existing) return;
-    const launcher = createElement('button', 'ai-heuristic-launcher', 'Style cue settings');
+    const existing = document.querySelector('.ai-heuristic-launcher' + owned);
+    const label = settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
+    if (existing) { existing.textContent = label; return; }
+    const launcher = createElement('button', 'ai-heuristic-launcher', label);
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -1408,8 +1416,9 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     body.appendChild(createElement(
       'p',
       'ai-heuristic-popover__summary',
-      'This button remains available while a non-default filter is active.'
+      'Settings apply to this website. You can return here even when all badges are hidden.'
     ));
+    appendRuntimeNotice(body);
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
     document.body.appendChild(popover);
@@ -1491,6 +1500,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       technical.textContent = technicalText(diagnostic);
     });
     body.appendChild(details);
+    appendRuntimeNotice(body);
     body.appendChild(createSettingsSection());
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
     popover.appendChild(body);
@@ -1537,15 +1547,22 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function kindFor(element) {
-    return adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+    const kind = adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+    if (kind !== 'post' && kind !== 'comment') throw new Error('Invalid content kind');
+    return kind;
   }
 
   function processElement(element) {
-    if (stopped || !element.isConnected) return;
+    if (stopped || !running || !element.isConnected || !analysisAllowed()) return;
     const kind = kindFor(element);
-    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) return;
-    const content = adapter.extractContent(element, kind);
+    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) {
+      removeRecord(element);
+      return;
+    }
+    const content = adapter.extractContent(element, kind) || { text: '', excluded: { quotes: 0, code: 0 } };
     const { text, excluded } = content;
+    if (typeof text !== 'string' || !excluded || !['quotes', 'code'].every((key) =>
+      Number.isInteger(excluded[key]) && excluded[key] >= 0)) throw new Error('Invalid adapter content');
     const previous = records.get(element);
     if (!text && !excluded.quotes && !excluded.code) {
       if (previous && previous.badge) {
@@ -1574,20 +1591,22 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       return;
     }
     const badge = createBadge(analysis);
-    adapter.placeBadge(element, badge, kind, content);
+    try { adapter.placeBadge(element, badge, kind, content); }
+    catch (error) { badge.remove(); throw error; }
     records.set(element, { fingerprint, text, badge, analysis });
   }
 
   function flushQueue() {
     queueTimer = null;
-    if (stopped) return;
+    if (stopped || !running) return;
+    if (!analysisAllowed()) { refreshState(); return; }
     const start = performance.now();
     let count = 0;
     for (const element of pending) {
       pending.delete(element);
       if (!intersectionObserver || visible.has(element)) {
         dirty.delete(element);
-        processElement(element);
+        processSafely(element);
       }
       count += 1;
       if (count >= 8 || performance.now() - start >= 8) break;
@@ -1596,12 +1615,15 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function scheduleQueue() {
-    if (stopped || queueTimer !== null) return;
+    if (stopped || !running || queueTimer !== null) return;
     queueTimer = window.setTimeout(flushQueue, 30);
   }
 
-  function track(element) {
-    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) return;
+  function trackCandidate(element) {
+    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) {
+      untrack(element);
+      return;
+    }
     dirty.add(element);
     if (!tracked.has(element)) {
       tracked.add(element);
@@ -1611,6 +1633,41 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       pending.add(element);
       scheduleQueue();
     }
+  }
+
+  function reportFailure(phase) {
+    if (reportedFailures.has(phase)) return;
+    reportedFailures.add(phase);
+    console.warn('[Style cues] Skipped an adapter operation: ' + adapter.id + '/' + phase);
+  }
+
+  function removeRecord(element) {
+    const record = records.get(element);
+    if (record && record.badge) {
+      if (activePopover && activePopover.badge === record.badge) closePopover(false);
+      record.badge.remove();
+    }
+    records.delete(element);
+  }
+
+  function untrack(element) {
+    removeRecord(element);
+    tracked.delete(element);
+    pending.delete(element);
+    dirty.delete(element);
+    visible.delete(element);
+    if (intersectionObserver) intersectionObserver.unobserve(element);
+  }
+
+  function processSafely(element) {
+    try { processElement(element); }
+    catch (_) { removeRecord(element); reportFailure('candidate'); }
+  }
+
+  function track(element) {
+    if (!running) return;
+    try { trackCandidate(element); }
+    catch (_) { removeRecord(element); reportFailure('discovery'); }
   }
 
   function discover(root) {
@@ -1625,12 +1682,18 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function onMutations(mutations) {
-    if (stopped) return;
+    if (stopped || !running) return;
+    if (!analysisAllowed() || location.href !== lastUrl) { refreshState(true); return; }
+    if (mutations.some((mutation) => Array.from(mutation.addedNodes).some((node) =>
+      node.nodeType === 1 && !node.dataset.aiStyleInstance && detectLegacy(node)))) { refreshState(true); return; }
     let removedContent = false;
     for (const mutation of mutations) {
       if (isOwnUI(mutation.target)) continue;
       const changed = [...mutation.addedNodes, ...mutation.removedNodes];
       const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+      if (target && tracked.has(target) && !target.matches(candidateSelector)) {
+        untrack(target);
+      }
       const owner = target && target.closest(candidateSelector);
       if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
         const record = owner && records.get(owner);
@@ -1644,11 +1707,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     if (removedContent) {
       for (const element of tracked) {
         if (element.isConnected) continue;
-        if (intersectionObserver) intersectionObserver.unobserve(element);
-        if (activePopover && element.contains(activePopover.badge)) closePopover(false);
-        tracked.delete(element);
-        dirty.delete(element);
-        pending.delete(element);
+        untrack(element);
       }
     }
   }
@@ -1656,20 +1715,79 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   // Explicit synchronous scan for development/tests; live updates are targeted.
   function scanNow() {
     if (stopped) return;
+    refreshState();
+    if (!running) return;
     document.querySelectorAll(candidateSelector).forEach((element) => {
       track(element);
       pending.delete(element);
       dirty.delete(element);
-      processElement(element);
+      processSafely(element);
     });
   }
 
-  function resetAndRescan() {
-    closePopover(false);
-    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
+  function resetAndRescan() { refreshState(true); }
+
+  function appendRuntimeNotice(parent) {
+    if (notice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', notice));
+    if (!routeSupported()) parent.appendChild(createElement('p', 'ai-heuristic-popover__summary', 'Style cues are inactive on this page.'));
+  }
+
+  function setNotice(message, block = false) {
+    notice = message;
+    legacyBlocked = legacyBlocked || block;
+    refreshState(block);
+  }
+
+  function detectLegacy(root = document) {
+    if (legacyBlocked) return true;
+    const selector = '.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]:not([data-ai-style-instance]), style[data-ai-heuristic-style="' + adapter.id + '"]:not([data-ai-style-instance])';
+    const legacy = (root.matches && root.matches(selector)) || root.querySelector(selector);
+    if (!legacy) return false;
+    legacyBlocked = true;
+    notice = 'An older site script is still active. Disable it in Userscripts and refresh this page to use the combined release. Its running observers cannot be disabled by this script.';
+    return true;
+  }
+
+  function routeSupported() {
+    try { return !options.routeSupported || options.routeSupported(new URL(location.href)); }
+    catch (_) { reportFailure('route'); return false; }
+  }
+
+  function analysisAllowed() { return settings.enabled && !legacyBlocked && routeSupported(); }
+
+  function suspendAnalysis() {
+    running = false;
+    if (observer) observer.disconnect();
+    if (intersectionObserver) intersectionObserver.disconnect();
+    observer = null;
+    intersectionObserver = null;
+    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    queueTimer = null;
+    tracked.clear();
+    dirty.clear();
+    pending.clear();
+    visible = new WeakSet();
     records = new WeakMap();
     analysisCache.clear();
-    tracked.forEach(track);
+    closePopover(false);
+    document.querySelectorAll('.ai-heuristic-badge' + owned).forEach((badge) => badge.remove());
+  }
+
+  function refreshState(force = false) {
+    if (stopped || !started || !document.body) return;
+    const changed = bodyReference !== document.body || lastUrl !== location.href;
+    lastUrl = location.href;
+    bodyReference = document.body;
+    detectLegacy();
+    const allowed = analysisAllowed();
+    if (force || changed || (running && !allowed)) suspendAnalysis();
+    injectStyles();
+    syncSettingsLauncher();
+    if (allowed && !running) startAnalysis();
+  }
+
+  function checkLocation() {
+    if (location.href !== lastUrl || document.body !== bodyReference) refreshState(true);
   }
 
   function onDocumentClick(event) {
@@ -1684,14 +1802,11 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     closePopover(false);
   }
 
-  function start() {
-    if (started || stopped) return;
-    started = true;
-    injectStyles();
-    syncSettingsLauncher();
+  function startAnalysis() {
+    running = true;
     if (typeof window.IntersectionObserver === 'function') {
       intersectionObserver = new IntersectionObserver((entries) => {
-        if (stopped) return;
+        if (stopped || !running) return;
         for (const entry of entries) {
           if (entry.isIntersecting) {
             visible.add(entry.target);
@@ -1705,43 +1820,215 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
-      attributes: true, attributeFilter: ['lang', 'class', 'data-testid', 'slot']
+      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', ...(adapter.observedAttributes || [])])]
     });
-    document.addEventListener('click', onDocumentClick, true);
-    document.addEventListener('keydown', onKeydown);
-    window.addEventListener('resize', onViewportChange, { passive: true });
-    window.addEventListener('scroll', onViewportChange, { passive: true });
+  }
+
+  function start() {
+    if (started || stopped || !document.body) return;
+    started = true;
+    try {
+      rootObserver = new MutationObserver(() => refreshState());
+      rootObserver.observe(document.documentElement, { childList: true });
+      // Poll only the URL/body references: works in isolated worlds without
+      // patching the site's history methods or repeatedly scanning its DOM.
+      routeTimer = window.setInterval(checkLocation, 1000);
+      window.addEventListener('popstate', checkLocation);
+      window.addEventListener('hashchange', checkLocation);
+      window.addEventListener('pageshow', checkLocation);
+      refreshState();
+      document.addEventListener('click', onDocumentClick, true);
+      document.addEventListener('keydown', onKeydown);
+      window.addEventListener('resize', onViewportChange, { passive: true });
+      window.addEventListener('scroll', onViewportChange, { passive: true });
+    } catch (error) {
+      stop();
+      throw error;
+    }
   }
 
   function stop() {
+    if (stopped) return;
     stopped = true;
-    if (observer) observer.disconnect();
-    if (intersectionObserver) intersectionObserver.disconnect();
-    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    suspendAnalysis();
+    if (rootObserver) rootObserver.disconnect();
+    if (routeTimer !== null) window.clearInterval(routeTimer);
     document.removeEventListener('DOMContentLoaded', start);
     document.removeEventListener('click', onDocumentClick, true);
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('resize', onViewportChange);
     window.removeEventListener('scroll', onViewportChange);
-    tracked.clear();
-    dirty.clear();
-    pending.clear();
-    analysisCache.clear();
-    closePopover(false);
-    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"], .ai-heuristic-launcher[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
+    window.removeEventListener('popstate', checkLocation);
+    window.removeEventListener('hashchange', checkLocation);
+    window.removeEventListener('pageshow', checkLocation);
+    document.querySelectorAll('style' + owned + ', .ai-heuristic-launcher' + owned).forEach((node) => node.remove());
+    if (options.onStop) options.onStop();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
   return {
-    scanNow, resetAndRescan, stop,
+    scanNow, resetAndRescan, stop, setNotice,
+    getStatus: () => ({ running, stopped, legacyBlocked }),
     getSettings: () => ({ ...settings }),
     getAnalysis: (element) => records.get(element) && records.get(element).analysis,
     engine
   };
 }
 
+/**
+ * @typedef {Object} AIContent
+ * @property {string} text Author-owned text with structural boundaries.
+ * @property {{quotes: number, code: number}} excluded Removed DOM sections.
+ * @property {Element|null} [host] Optional badge placement hint.
+ *
+ * @typedef {Object} AIPlatformAdapter
+ * @property {string} id Stable registry/storage/model identity.
+ * @property {string} name Display name.
+ * @property {string} postSelector
+ * @property {string} commentSelector
+ * @property {(element: Element) => ('post'|'comment')} [kindForElement]
+ * @property {(element: Element, kind: string) => boolean} isTopLevel
+ * @property {(element: Element, kind: string) => AIContent|null} extractContent
+ * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
+ * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
+ * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
+ * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
+ * to the runtime. Null/empty extraction removes a previously attached badge.
+ */
+
+function aiHostMatches(hostname, pattern) {
+  if (pattern.startsWith('*.')) {
+    const base = pattern.slice(2);
+    return hostname === base || hostname.endsWith('.' + base);
+  }
+  return hostname === pattern;
+}
+
+function validateAIAdapter(adapter, entry) {
+  if (!adapter || adapter.id !== entry.id || typeof adapter.name !== 'string') throw new Error('Invalid adapter identity');
+  for (const name of ['postSelector', 'commentSelector']) {
+    if (typeof adapter[name] !== 'string' || !adapter[name].trim()) throw new Error('Missing candidate selector');
+    document.createElement('div').querySelectorAll(adapter[name]);
+  }
+  for (const name of ['isTopLevel', 'extractContent', 'placeBadge']) {
+    if (typeof adapter[name] !== 'function') throw new Error('Missing adapter method');
+  }
+  for (const name of ['kindForElement', 'supportsUrl']) {
+    if (adapter[name] !== undefined && typeof adapter[name] !== 'function') throw new Error('Invalid optional adapter method');
+  }
+  if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
+    adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {
+    throw new Error('Invalid observed attributes');
+  }
+  return adapter;
+}
+
+function bootAIHeuristic(registry, factories, models, release) {
+  const url = new URL(location.href);
+  if (url.protocol !== 'https:' || window.top !== window.self) return null;
+  const matches = registry.filter((entry) => entry.status !== 'planned' && entry.hosts.some((host) => aiHostMatches(url.hostname, host)));
+  if (matches.length !== 1) return null;
+  const entry = matches[0];
+  let controller = null;
+  let marker = null;
+  let stopped = false;
+  let status = 'waiting';
+  const instance = 'aih-' + Math.random().toString(36).slice(2);
+  const selector = 'meta[data-ai-style-owner="' + entry.id + '"]';
+  const hint = 'Multiple script installations were found. Keep the combined script enabled and disable the older site scripts in Userscripts, then refresh.';
+
+  function rank(version, distribution) {
+    return version.split('.').map(Number).concat(distribution === 'combined' ? 1 : 0);
+  }
+  function compare(left, right) {
+    for (let i = 0; i < left.length; i += 1) {
+      if (left[i] !== right[i]) return left[i] - right[i];
+    }
+    return 0;
+  }
+  function ping() { marker.setAttribute('data-ai-alive', '1'); }
+  function duplicate() { if (controller) controller.setNotice(hint); }
+  function releaseOwnership() {
+    if (!marker) return;
+    marker.removeEventListener('ai-style-ping', ping);
+    marker.removeEventListener('ai-style-retire', stop);
+    marker.removeEventListener('ai-style-duplicate', duplicate);
+    marker.remove();
+    marker = null;
+  }
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    status = 'stopped';
+    document.removeEventListener('DOMContentLoaded', launch);
+    if (controller) controller.stop();
+    releaseOwnership();
+  }
+  function launch() {
+    if (stopped || !document.body) return;
+    let adapter;
+    try {
+      adapter = validateAIAdapter(factories[entry.id](), entry);
+    } catch (_) {
+      status = 'failed';
+      console.warn('[Style cues] Adapter could not start: ' + entry.id);
+      return;
+    }
+    let coexistence = false;
+    const prior = document.querySelector(selector);
+    if (prior) {
+      prior.removeAttribute('data-ai-alive');
+      prior.dispatchEvent(new Event('ai-style-ping'));
+      if (prior.getAttribute('data-ai-alive') === '1') {
+        coexistence = prior.dataset.distribution !== release.distribution;
+        const previousVersion = prior.dataset.version || '0.0.0';
+        if (compare(rank(release.version, release.distribution), rank(previousVersion, prior.dataset.distribution)) <= 0) {
+          if (coexistence) prior.dispatchEvent(new Event('ai-style-duplicate'));
+          status = 'superseded';
+          return;
+        }
+        prior.dispatchEvent(new Event('ai-style-retire'));
+      }
+      prior.remove();
+    }
+    marker = document.createElement('meta');
+    marker.dataset.aiStyleOwner = entry.id;
+    marker.dataset.aiHeuristicUi = '1';
+    marker.dataset.instance = instance;
+    marker.dataset.version = release.version;
+    marker.dataset.distribution = release.distribution;
+    marker.addEventListener('ai-style-ping', ping);
+    marker.addEventListener('ai-style-retire', stop);
+    marker.addEventListener('ai-style-duplicate', duplicate);
+    // Keep ownership outside replaceable feed/body/head trees.
+    document.documentElement.appendChild(marker);
+    try {
+      controller = startAIHeuristic(adapter, models, {
+        instance,
+        notice: coexistence ? hint : '',
+        enabledByDefault: entry.status !== 'experimental',
+        routeSupported(current) {
+          return !entry.excludedPaths.some((path) => current.pathname === path || current.pathname.startsWith(path + '/')) &&
+            (!adapter.supportsUrl || adapter.supportsUrl(current));
+        },
+        onStop() { status = 'stopped'; releaseOwnership(); }
+      });
+      status = 'active';
+    } catch (_) {
+      status = 'failed';
+      releaseOwnership();
+      console.warn('[Style cues] Runtime could not start: ' + entry.id);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', launch, { once: true });
+  else launch();
+  return { stop, getController: () => controller, getStatus: () => status };
+}
+
+  const factories = {
+"x": function () {
 function createPlatformAdapter() {
   'use strict';
 
@@ -1796,6 +2083,8 @@ function createPlatformAdapter() {
     }
   };
 }
-
-  startAIHeuristic(createPlatformAdapter(), AI_HEURISTIC_MODELS);
+return createPlatformAdapter();
+}
+  };
+  bootAIHeuristic([{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.0",distribution:"targeted"});
 })();

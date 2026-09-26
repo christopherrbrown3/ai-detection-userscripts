@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## 0.5.0 - 2026-09-26
+
+- Make one combined userscript the default for LinkedIn, X/Twitter, and Reddit. Preserve optional targeted files, their update identities, and existing host scopes.
+- Generate dispatch, self-contained bundles, metadata companions, and coverage documentation from a validated registry and one product version.
+- Add a documented adapter contract, contributor template, and executable fourth-site extension example. Facebook, Threads, and Bluesky remain separate future adapters.
+- Preserve origin-local settings and add per-site enable/disable with an always-available settings launcher. Exclude messaging routes and editable composers.
+- Coordinate compatible installations across DOM execution contexts; newest version wins, with combined winning ties. Detect legacy v0.4 installations and provide manual migration guidance.
+- Handle navigation, root replacement, recycled posts, failed candidates, and complete teardown without duplicating analysis observers or leaving stale badges.
+- Preserve v0.4 cue results on baseline fixtures. Add generated combined/targeted regression matrices, isolated Chromium/CSP checks, and a repeatable feed/edit/scroll workload.
+- Record migration/rollback steps and local deployment backups. Safari/Userscripts execution, automatic updates, and live platform checks were not performed; native Safari verification was waived by the user. See [consolidation validation](docs/consolidation-validation.md).
+
 ## 0.4.0 - 2026-09-25
 
 - Preserve paragraph, line-break, and list boundaries; exclude quotations, code, and identified quoted posts. Share one sentence parser across cue checks and diagnostic features.

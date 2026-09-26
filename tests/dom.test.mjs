@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { describe, afterEach } from 'node:test';
 
-import { loadDom, loadFixture } from './helpers.mjs';
+import { loadDom as loadSourceDom, loadGeneratedDom, loadFixture, closeDoms } from './helpers.mjs';
+
+afterEach(closeDoms);
+
+for (const distribution of ['source', 'combined', 'targeted']) describe(distribution + ' layouts', () => {
+  const loadDom = (platform, html, url) => distribution === 'source'
+    ? loadSourceDom(platform, html, url)
+    : loadGeneratedDom(platform, html, url, { distribution });
 
 test('LinkedIn scores the post and nested comment independently', () => {
   const dom = loadDom('linkedin', loadFixture('linkedin.html'), 'https://www.linkedin.com/feed/');
@@ -191,4 +198,6 @@ test('a settings launcher remains when badge filters are active', () => {
   launcher.click();
   assert.match(document.querySelector('[role="dialog"] h2').textContent, /settings/i);
   dom.window.close();
+});
+
 });

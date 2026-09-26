@@ -5,7 +5,7 @@
 1. Confirm the script is enabled in Userscripts.
 2. In Safari settings, grant the Userscripts extension access to the affected website.
 3. Refresh the page after installation or update.
-4. Check whether assessed posts with no cues or short/unassessed samples are hidden in the badge settings. A **Style cue settings** button remains available while a filter is active.
+4. Check whether assessed posts with no cues or short/unassessed samples are hidden in the badge settings. The **Style cue settings** button is always available. Confirm **Enable style cues on this site** is on; messaging routes are intentionally inactive.
 5. Scroll the post into or near the viewport; offscreen posts wait until they approach it. Short English samples can still show matched cues, with **Short sample** on the badge.
 
 ## A badge says “not assessed”
@@ -14,13 +14,15 @@ The English cue rules could not establish enough language evidence. The script d
 
 ## Comments or replies are missing
 
-Open any visible badge, then enable **Analyze comments and replies**. Some sites load comments only after expansion; the content observer will analyze them after insertion.
+Open the settings launcher or any visible badge, then enable **Analyze comments and replies**. Some sites load comments only after expansion; the content observer will analyze them after insertion.
 
 ## A badge shows an old assessment
 
-Version 0.4 queues the affected post after edits, translations, and expansions, and reuses the result only when the extracted content is unchanged. An offscreen edit is analyzed when the post approaches the viewport. If a stale assessment persists, refresh the page and file an issue with the site, page type, Safari version, and a sanitized DOM snippet.
+The runtime queues the affected post after edits, translations, and expansions, and reuses the result only when the extracted content is unchanged. An offscreen edit is analyzed when the post approaches the viewport. If a stale assessment persists, refresh the page and file an issue with the site, page type, Safari version, and a sanitized DOM snippet.
 
 ## A badge is duplicated or attached to the wrong text
+
+First check Userscripts for multiple installations. Disable the old targeted scripts if using the combined script, then refresh the tab. Legacy scripts already running in a tab cannot be stopped by replacing their files. See [migration and rollback](migration.md).
 
 Dynamic site markup changes periodically. Please open a [GitHub issue](https://github.com/christopherrbrown3/ai-detection-userscripts/issues) containing:
 
@@ -31,6 +33,10 @@ Dynamic site markup changes periodically. Please open a [GitHub issue](https://g
 - a sanitized HTML fixture if possible
 
 Do not include private messages, account data, or text you do not have permission to share.
+
+## A new site has no badges
+
+Only LinkedIn, X/Twitter, and Reddit are supported in v0.5. Facebook, Threads, and Bluesky require their own verified adapters. See [supported sites](supported-sites.md). On a supported site, an unfamiliar layout is skipped rather than analyzing unrelated page text.
 
 ## Reset settings
 

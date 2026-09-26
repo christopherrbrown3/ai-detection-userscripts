@@ -3,7 +3,7 @@
 [![CI](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml/badge.svg)](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f46e5.svg)](LICENSE)
 
-Privacy-first Safari userscripts that show observable writing-style cues on posts and comments on LinkedIn, X/Twitter, and Reddit.
+A privacy-first Safari userscript that shows observable writing-style cues on posts and comments on LinkedIn, X/Twitter, and Reddit.
 
 > [!IMPORTANT]
 > This project analyzes surface writing patterns. It cannot prove who or what wrote a post. Short, edited, personalized, multilingual, and mixed-authorship text may be impossible to classify reliably. Never use a badge as the basis for an accusation or high-stakes decision.
@@ -13,16 +13,21 @@ Privacy-first Safari userscripts that show observable writing-style cues on post
 ## Install
 
 1. Install [Userscripts for Safari](https://github.com/quoid/userscripts).
-2. Open one of the raw script links below in Safari.
-3. Accept the Userscripts installation prompt and grant access only to that script's site.
+2. Open **[Install AI-Style Cues — all supported sites](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/ai-style-cues.userscripts.user.js)** in Safari.
+3. Accept the Userscripts installation prompt and grant access to the supported sites you want to use.
+4. If upgrading from the three site scripts, disable those scripts and refresh your tabs. Follow the [migration and rollback guide](docs/migration.md) to keep your settings and backups.
 
-| Site | Install | Coverage |
+One self-contained script supports LinkedIn, X/Twitter, and Reddit. Only the adapter for the current site runs. Facebook, Threads, and Bluesky are planned extensions and are not yet supported. See the generated [supported-site and route matrix](docs/supported-sites.md).
+
+Optional targeted installations retain their existing names, update URLs, and narrower host permissions:
+
+| Site | Optional install | Coverage |
 | --- | --- | --- |
-| LinkedIn | [Install LinkedIn script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js) | Feed, profile activity, direct post permalinks, and comments |
-| X/Twitter | [Install X script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/x-ai-heuristic.userscripts.user.js) | Posts and replies |
-| Reddit | [Install Reddit script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/reddit-ai-heuristic.userscripts.user.js) | Current Reddit, old Reddit, posts, and comments |
+| LinkedIn | [LinkedIn script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js) | Feed, profile activity, direct post permalinks, and comments |
+| X/Twitter | [X script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/x-ai-heuristic.userscripts.user.js) | Posts and replies |
+| Reddit | [Reddit script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/reddit-ai-heuristic.userscripts.user.js) | Current Reddit, old Reddit, posts, and comments |
 
-Manual installation is also supported: open Userscripts → Manage → Open Scripts Folder, copy a root-level `.user.js` file there, enable it, and refresh the target site.
+Manual installation: open Userscripts → Manage → Open Scripts Folder, copy the desired root-level `.user.js` file there, enable it, and refresh the target site. Keep only your intended installation enabled. Do not install the metadata-only `.meta.js` files.
 
 ### Compatibility
 
@@ -40,7 +45,9 @@ Short, unassessed, and zero-match badges use neutral colors. Other matches use o
 
 The six families are explicit model references, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Descriptions report observable patterns, not rhetorical intent or authorship. Lists are excluded from the three prose-based rhythm/repetition checks; counted openings are excluded from phrase repetition. These safeguards reduce overlapping matches without claiming that the families are statistically independent.
 
-Settings are stored locally for the current site:
+The **Style cue settings** button remains available even on empty pages or when every badge is hidden. Settings are stored locally for the current site/origin:
+
+- enable or disable analysis on this site
 
 - comments/replies on or off
 - hiding short or unassessed samples
@@ -73,7 +80,7 @@ Unicode is normalized and invisible formatting characters are removed before ana
 
 Posts approaching the viewport are queued in small batches. Edits re-extract the affected post, unchanged text reuses its analysis, and a bounded cache shares results for duplicate content. Legacy stylometry, character n-gram hashing, and model output are deferred until **Technical details** is opened in the default uncalibrated release.
 
-The root userscripts are generated from a shared detector and runtime plus thin platform adapters. The offline Python extractor mirrors the shared sentence and exclusion rules for diagnostic feature parity.
+The root userscripts are generated from one registry, shared detector/runtime/bootstrap, and thin platform adapters. Messaging routes are excluded and editable composers are omitted from text extraction. The offline Python extractor mirrors the shared sentence and exclusion rules for diagnostic feature parity.
 
 ## Accuracy policy
 
@@ -110,7 +117,7 @@ python3 scripts/build_userscripts.py
 python3 scripts/build_userscripts.py --check
 ```
 
-Tests cover feature parity between Python and JavaScript, cue spans, quotation/code exclusion, list overlap, scoring behavior, threshold selection, grouped splitting, nested DOM ownership, edited-content rescoring, cache reuse, viewport scheduling, and keyboard-accessible dialogs. See [browser validation](docs/browser-validation.md) for the synthetic regression comparison, list ablation, and verification limits.
+Tests cover feature parity between Python and JavaScript, cue spans, quotation/code exclusion, list overlap, scoring behavior, threshold selection, grouped splitting, nested DOM ownership, edited-content rescoring, cache reuse, viewport scheduling, and keyboard-accessible dialogs. See [v0.5 consolidation validation](docs/consolidation-validation.md) for generated-bundle parity, isolated-world coexistence, workload measurements, and verification limits. The [v0.4 cue validation](docs/browser-validation.md) records the earlier rule changes and list ablation. Architecture, the adapter contract, and a contributor template are documented in [adding sites](docs/adding-sites.md).
 
 ## Offline training
 
