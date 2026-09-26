@@ -1,0 +1,317 @@
+{
+  "browser": "153.0.8010.55",
+  "csp": "script-src 'none'",
+  "isolatedWorld": true,
+  "syntheticOnly": true,
+  "coexistence": [
+    {
+      "order": [
+        "targeted",
+        "combined"
+      ],
+      "active": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 2,
+          "io": 1,
+          "interval": 1
+        }
+      ],
+      "stopped": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ]
+    },
+    {
+      "order": [
+        "combined",
+        "targeted"
+      ],
+      "active": [
+        {
+          "mo": 2,
+          "io": 1,
+          "interval": 1
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ],
+      "stopped": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ]
+    },
+    {
+      "order": [
+        "combined",
+        "combined"
+      ],
+      "active": [
+        {
+          "mo": 2,
+          "io": 1,
+          "interval": 1
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ],
+      "stopped": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ]
+    }
+  ],
+  "legacy": [
+    {
+      "order": [
+        "baseline",
+        "combined"
+      ],
+      "modernBadges": 0,
+      "oldBadges": 11
+    },
+    {
+      "order": [
+        "combined",
+        "baseline"
+      ],
+      "modernBadges": 0,
+      "oldBadges": 11
+    }
+  ],
+  "workloads": [
+    {
+      "kind": "baseline",
+      "repeat": 0,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 38.5,
+      "flushTotalMs": 22.4,
+      "flushMaxMs": 1.6,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "kind": "combined",
+      "repeat": 0,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 39.6,
+      "flushTotalMs": 30.0,
+      "flushMaxMs": 2.2,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "kind": "combined",
+      "repeat": 1,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 36.0,
+      "flushTotalMs": 25.3,
+      "flushMaxMs": 2.0,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "kind": "baseline",
+      "repeat": 1,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 41.7,
+      "flushTotalMs": 21.2,
+      "flushMaxMs": 2.2,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "kind": "baseline",
+      "repeat": 2,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 37.3,
+      "flushTotalMs": 21.8,
+      "flushMaxMs": 1.8,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "kind": "combined",
+      "repeat": 2,
+      "startup": {
+        "badges": 11,
+        "extractions": 11,
+        "analyses": 4
+      },
+      "afterScroll": {
+        "badges": 120,
+        "extractions": 120,
+        "analyses": 4
+      },
+      "afterEdit": 5,
+      "firstBadgeMs": 36.2,
+      "flushTotalMs": 29.0,
+      "flushMaxMs": 3.0,
+      "flushCount": 22,
+      "extractions": 121,
+      "analyses": 5,
+      "diagnostics": 0,
+      "runtime": {
+        "tracked": 60,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    }
+  ],
+  "timingPrecision": "Rounded to 0.1 ms from the final local run."
+}

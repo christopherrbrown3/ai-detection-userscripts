@@ -1,16 +1,14 @@
 # Userscript source
 
-The three root-level `.user.js` files are generated, self-contained release artifacts.
+The root `.user.js` and `.meta.js` files are generated, self-contained release artifacts: one combined default and three optional targeted builds.
 
-- `detector.js` contains the shared sentence parser, observable cue rules, source spans, and diagnostic feature/scoring engine. Default analysis defers full diagnostics until requested.
-- `runtime.js` contains structural DOM extraction, viewport/mutation scheduling, bounded caching, settings, accessibility, and highlighted explanations.
-- `platforms/` contains only site-specific extraction and badge-placement adapters.
-- `../models/default-models.json` is the single model/threshold source.
+- `detector.js`: shared sentence parser, cue rules, spans, and deferred diagnostic scoring.
+- `runtime.js`: structural extraction, scheduling/cache, settings, accessibility, and lifecycle cleanup.
+- `bootstrap.js`: adapter contract/validation, dispatch, and cooperative ownership.
+- `platforms/registry.json`: single source for hosts, modules, output identities, routes, and coverage.
+- `platforms/*.js`: site-specific candidate ownership, extraction, and badge placement.
+- `../models/default-models.json`: model/threshold source; product version comes from `../package.json`.
 
-Rebuild from the repository root:
+Run `python3 scripts/build_userscripts.py` to regenerate. CI uses `--check` to prevent drift. `--list` discovers all userscript outputs.
 
-```bash
-python3 scripts/build_userscripts.py
-```
-
-CI runs the same command with `--check` to prevent source/runtime drift.
+Read the [architecture](../docs/architecture.md), [adapter contributor guide](../docs/adding-sites.md), and [validation report](../docs/consolidation-validation.md) before adding a site.

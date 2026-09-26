@@ -10,7 +10,7 @@ function aiHeuristicReadContent(node) {
       return;
     }
     if (current.nodeType !== 1) return;
-    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"]')) return;
+    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"], input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
     if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
       excluded.quotes += 1;
       parts.push('\n');
@@ -43,13 +43,25 @@ function aiHeuristicTextContent(node) {
   return aiHeuristicReadContent(node).text;
 }
 
-function startAIHeuristic(platformAdapter, modelBundle) {
+function startAIHeuristic(platformAdapter, modelBundle, options) {
   'use strict';
+  options = options || {};
 
   const adapter = platformAdapter;
+  const instance = options.instance || 'aih-' + Math.random().toString(36).slice(2);
+  const owned = '[data-ai-style-instance="' + instance + '"]';
+  let notice = options.notice || '';
+  let legacyBlocked = false;
+  let running = false;
+  let rootObserver = null;
+  let routeTimer = null;
+  let bodyReference = null;
+  let lastUrl = location.href;
+  const reportedFailures = new Set();
   const engine = createDetectorEngine({ platform: adapter.id, modelBundle });
   const storageKey = `ai-heuristic:${adapter.id}:settings:v2`;
   const defaults = {
+    enabled: options.enabledByDefault !== false,
     sensitivity: 'balanced',
     analyzeComments: true,
     hideInsufficient: false,
@@ -64,7 +76,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   let stopped = false;
   let started = false;
   const tracked = new Set();
-  const visible = new WeakSet();
+  let visible = new WeakSet();
   const dirty = new Set();
   const pending = new Set();
   const analysisCache = new Map();
@@ -341,31 +353,35 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     }
   `;
 
-  function loadSettings() {
-    try {
-      const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
-      return { ...defaults, ...stored };
-    } catch (error) {
-      return { ...defaults };
+  function normalizeSettings(value) {
+    const stored = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const result = { ...defaults, ...stored };
+    for (const key of ['enabled', 'analyzeComments', 'hideInsufficient', 'hideLow']) {
+      if (typeof result[key] !== 'boolean') result[key] = defaults[key];
     }
+    if (!['balanced', 'conservative', 'aggressive'].includes(result.sensitivity)) result.sensitivity = defaults.sensitivity;
+    return result;
+  }
+
+  function loadSettings() {
+    try { return normalizeSettings(JSON.parse(localStorage.getItem(storageKey) || '{}')); }
+    catch (_) { return { ...defaults }; }
   }
 
   function saveSettings(next) {
-    settings = { ...settings, ...next };
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(settings));
-    } catch (error) {
-      // Storage may be unavailable in private browsing; settings still work for this page.
-    }
-    syncSettingsLauncher();
-    resetAndRescan();
+    settings = normalizeSettings({ ...settings, ...next });
+    try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
+    catch (_) { /* Private browsing/storage denial: keep this tab's preferences. */ }
+    closePopover(false);
+    refreshState(true);
   }
 
   function injectStyles() {
-    if (document.querySelector(`style[data-ai-heuristic-style="${adapter.id}"]`)) return;
+    if (document.querySelector('style' + owned)) return;
     const style = document.createElement('style');
     style.dataset.aiHeuristicStyle = adapter.id;
     style.dataset.aiHeuristicUi = '1';
+    style.dataset.aiStyleInstance = instance;
     style.textContent = STYLE;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -381,6 +397,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
 
   function createElement(tag, className, text) {
     const element = document.createElement(tag);
+    element.dataset.aiStyleInstance = instance;
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
@@ -459,7 +476,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       lines.splice(2, 0,
         `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
-        `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
+        analysis.modelAvailable === false ? 'Diagnostic model: unavailable for this platform' :
+          `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
       );
     }
     return lines.join('\n');
@@ -471,6 +489,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     const controls = createElement('div', 'ai-heuristic-popover__settings');
 
     const checks = [
+      ['enabled', 'Enable style cues on this site'],
       ['analyzeComments', 'Analyze comments and replies'],
       ['hideInsufficient', 'Hide short or unassessed samples'],
       ['hideLow', 'Hide assessed posts with no cues']
@@ -488,21 +507,11 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     return section;
   }
 
-  function filtersAreActive() {
-    return settings.analyzeComments !== defaults.analyzeComments ||
-      settings.hideInsufficient !== defaults.hideInsufficient ||
-      settings.hideLow !== defaults.hideLow;
-  }
-
   function syncSettingsLauncher() {
-    const selector = `.ai-heuristic-launcher[data-ai-platform="${adapter.id}"]`;
-    const existing = document.querySelector(selector);
-    if (!filtersAreActive()) {
-      if (existing) existing.remove();
-      return;
-    }
-    if (existing) return;
-    const launcher = createElement('button', 'ai-heuristic-launcher', 'Style cue settings');
+    const existing = document.querySelector('.ai-heuristic-launcher' + owned);
+    const label = settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
+    if (existing) { existing.textContent = label; return; }
+    const launcher = createElement('button', 'ai-heuristic-launcher', label);
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -543,8 +552,9 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     body.appendChild(createElement(
       'p',
       'ai-heuristic-popover__summary',
-      'This button remains available while a non-default filter is active.'
+      'Settings apply to this website. You can return here even when all badges are hidden.'
     ));
+    appendRuntimeNotice(body);
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
     document.body.appendChild(popover);
@@ -626,6 +636,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       technical.textContent = technicalText(diagnostic);
     });
     body.appendChild(details);
+    appendRuntimeNotice(body);
     body.appendChild(createSettingsSection());
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
     popover.appendChild(body);
@@ -672,15 +683,22 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function kindFor(element) {
-    return adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+    const kind = adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+    if (kind !== 'post' && kind !== 'comment') throw new Error('Invalid content kind');
+    return kind;
   }
 
   function processElement(element) {
-    if (stopped || !element.isConnected) return;
+    if (stopped || !running || !element.isConnected || !analysisAllowed()) return;
     const kind = kindFor(element);
-    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) return;
-    const content = adapter.extractContent(element, kind);
+    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) {
+      removeRecord(element);
+      return;
+    }
+    const content = adapter.extractContent(element, kind) || { text: '', excluded: { quotes: 0, code: 0 } };
     const { text, excluded } = content;
+    if (typeof text !== 'string' || !excluded || !['quotes', 'code'].every((key) =>
+      Number.isInteger(excluded[key]) && excluded[key] >= 0)) throw new Error('Invalid adapter content');
     const previous = records.get(element);
     if (!text && !excluded.quotes && !excluded.code) {
       if (previous && previous.badge) {
@@ -709,20 +727,22 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       return;
     }
     const badge = createBadge(analysis);
-    adapter.placeBadge(element, badge, kind, content);
+    try { adapter.placeBadge(element, badge, kind, content); }
+    catch (error) { badge.remove(); throw error; }
     records.set(element, { fingerprint, text, badge, analysis });
   }
 
   function flushQueue() {
     queueTimer = null;
-    if (stopped) return;
+    if (stopped || !running) return;
+    if (!analysisAllowed()) { refreshState(); return; }
     const start = performance.now();
     let count = 0;
     for (const element of pending) {
       pending.delete(element);
       if (!intersectionObserver || visible.has(element)) {
         dirty.delete(element);
-        processElement(element);
+        processSafely(element);
       }
       count += 1;
       if (count >= 8 || performance.now() - start >= 8) break;
@@ -731,12 +751,15 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function scheduleQueue() {
-    if (stopped || queueTimer !== null) return;
+    if (stopped || !running || queueTimer !== null) return;
     queueTimer = window.setTimeout(flushQueue, 30);
   }
 
-  function track(element) {
-    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) return;
+  function trackCandidate(element) {
+    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) {
+      untrack(element);
+      return;
+    }
     dirty.add(element);
     if (!tracked.has(element)) {
       tracked.add(element);
@@ -746,6 +769,41 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       pending.add(element);
       scheduleQueue();
     }
+  }
+
+  function reportFailure(phase) {
+    if (reportedFailures.has(phase)) return;
+    reportedFailures.add(phase);
+    console.warn('[Style cues] Skipped an adapter operation: ' + adapter.id + '/' + phase);
+  }
+
+  function removeRecord(element) {
+    const record = records.get(element);
+    if (record && record.badge) {
+      if (activePopover && activePopover.badge === record.badge) closePopover(false);
+      record.badge.remove();
+    }
+    records.delete(element);
+  }
+
+  function untrack(element) {
+    removeRecord(element);
+    tracked.delete(element);
+    pending.delete(element);
+    dirty.delete(element);
+    visible.delete(element);
+    if (intersectionObserver) intersectionObserver.unobserve(element);
+  }
+
+  function processSafely(element) {
+    try { processElement(element); }
+    catch (_) { removeRecord(element); reportFailure('candidate'); }
+  }
+
+  function track(element) {
+    if (!running) return;
+    try { trackCandidate(element); }
+    catch (_) { removeRecord(element); reportFailure('discovery'); }
   }
 
   function discover(root) {
@@ -760,12 +818,18 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function onMutations(mutations) {
-    if (stopped) return;
+    if (stopped || !running) return;
+    if (!analysisAllowed() || location.href !== lastUrl) { refreshState(true); return; }
+    if (mutations.some((mutation) => Array.from(mutation.addedNodes).some((node) =>
+      node.nodeType === 1 && !node.dataset.aiStyleInstance && detectLegacy(node)))) { refreshState(true); return; }
     let removedContent = false;
     for (const mutation of mutations) {
       if (isOwnUI(mutation.target)) continue;
       const changed = [...mutation.addedNodes, ...mutation.removedNodes];
       const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+      if (target && tracked.has(target) && !target.matches(candidateSelector)) {
+        untrack(target);
+      }
       const owner = target && target.closest(candidateSelector);
       if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
         const record = owner && records.get(owner);
@@ -779,11 +843,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     if (removedContent) {
       for (const element of tracked) {
         if (element.isConnected) continue;
-        if (intersectionObserver) intersectionObserver.unobserve(element);
-        if (activePopover && element.contains(activePopover.badge)) closePopover(false);
-        tracked.delete(element);
-        dirty.delete(element);
-        pending.delete(element);
+        untrack(element);
       }
     }
   }
@@ -791,20 +851,79 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   // Explicit synchronous scan for development/tests; live updates are targeted.
   function scanNow() {
     if (stopped) return;
+    refreshState();
+    if (!running) return;
     document.querySelectorAll(candidateSelector).forEach((element) => {
       track(element);
       pending.delete(element);
       dirty.delete(element);
-      processElement(element);
+      processSafely(element);
     });
   }
 
-  function resetAndRescan() {
-    closePopover(false);
-    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
+  function resetAndRescan() { refreshState(true); }
+
+  function appendRuntimeNotice(parent) {
+    if (notice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', notice));
+    if (!routeSupported()) parent.appendChild(createElement('p', 'ai-heuristic-popover__summary', 'Style cues are inactive on this page.'));
+  }
+
+  function setNotice(message, block = false) {
+    notice = message;
+    legacyBlocked = legacyBlocked || block;
+    refreshState(block);
+  }
+
+  function detectLegacy(root = document) {
+    if (legacyBlocked) return true;
+    const selector = '.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]:not([data-ai-style-instance]), style[data-ai-heuristic-style="' + adapter.id + '"]:not([data-ai-style-instance])';
+    const legacy = (root.matches && root.matches(selector)) || root.querySelector(selector);
+    if (!legacy) return false;
+    legacyBlocked = true;
+    notice = 'An older site script is still active. Disable it in Userscripts and refresh this page to use the combined release. Its running observers cannot be disabled by this script.';
+    return true;
+  }
+
+  function routeSupported() {
+    try { return !options.routeSupported || options.routeSupported(new URL(location.href)); }
+    catch (_) { reportFailure('route'); return false; }
+  }
+
+  function analysisAllowed() { return settings.enabled && !legacyBlocked && routeSupported(); }
+
+  function suspendAnalysis() {
+    running = false;
+    if (observer) observer.disconnect();
+    if (intersectionObserver) intersectionObserver.disconnect();
+    observer = null;
+    intersectionObserver = null;
+    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    queueTimer = null;
+    tracked.clear();
+    dirty.clear();
+    pending.clear();
+    visible = new WeakSet();
     records = new WeakMap();
     analysisCache.clear();
-    tracked.forEach(track);
+    closePopover(false);
+    document.querySelectorAll('.ai-heuristic-badge' + owned).forEach((badge) => badge.remove());
+  }
+
+  function refreshState(force = false) {
+    if (stopped || !started || !document.body) return;
+    const changed = bodyReference !== document.body || lastUrl !== location.href;
+    lastUrl = location.href;
+    bodyReference = document.body;
+    detectLegacy();
+    const allowed = analysisAllowed();
+    if (force || changed || (running && !allowed)) suspendAnalysis();
+    injectStyles();
+    syncSettingsLauncher();
+    if (allowed && !running) startAnalysis();
+  }
+
+  function checkLocation() {
+    if (location.href !== lastUrl || document.body !== bodyReference) refreshState(true);
   }
 
   function onDocumentClick(event) {
@@ -819,14 +938,11 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     closePopover(false);
   }
 
-  function start() {
-    if (started || stopped) return;
-    started = true;
-    injectStyles();
-    syncSettingsLauncher();
+  function startAnalysis() {
+    running = true;
     if (typeof window.IntersectionObserver === 'function') {
       intersectionObserver = new IntersectionObserver((entries) => {
-        if (stopped) return;
+        if (stopped || !running) return;
         for (const entry of entries) {
           if (entry.isIntersecting) {
             visible.add(entry.target);
@@ -840,37 +956,57 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
-      attributes: true, attributeFilter: ['lang', 'class', 'data-testid', 'slot']
+      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', ...(adapter.observedAttributes || [])])]
     });
-    document.addEventListener('click', onDocumentClick, true);
-    document.addEventListener('keydown', onKeydown);
-    window.addEventListener('resize', onViewportChange, { passive: true });
-    window.addEventListener('scroll', onViewportChange, { passive: true });
+  }
+
+  function start() {
+    if (started || stopped || !document.body) return;
+    started = true;
+    try {
+      rootObserver = new MutationObserver(() => refreshState());
+      rootObserver.observe(document.documentElement, { childList: true });
+      // Poll only the URL/body references: works in isolated worlds without
+      // patching the site's history methods or repeatedly scanning its DOM.
+      routeTimer = window.setInterval(checkLocation, 1000);
+      window.addEventListener('popstate', checkLocation);
+      window.addEventListener('hashchange', checkLocation);
+      window.addEventListener('pageshow', checkLocation);
+      refreshState();
+      document.addEventListener('click', onDocumentClick, true);
+      document.addEventListener('keydown', onKeydown);
+      window.addEventListener('resize', onViewportChange, { passive: true });
+      window.addEventListener('scroll', onViewportChange, { passive: true });
+    } catch (error) {
+      stop();
+      throw error;
+    }
   }
 
   function stop() {
+    if (stopped) return;
     stopped = true;
-    if (observer) observer.disconnect();
-    if (intersectionObserver) intersectionObserver.disconnect();
-    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    suspendAnalysis();
+    if (rootObserver) rootObserver.disconnect();
+    if (routeTimer !== null) window.clearInterval(routeTimer);
     document.removeEventListener('DOMContentLoaded', start);
     document.removeEventListener('click', onDocumentClick, true);
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('resize', onViewportChange);
     window.removeEventListener('scroll', onViewportChange);
-    tracked.clear();
-    dirty.clear();
-    pending.clear();
-    analysisCache.clear();
-    closePopover(false);
-    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"], .ai-heuristic-launcher[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
+    window.removeEventListener('popstate', checkLocation);
+    window.removeEventListener('hashchange', checkLocation);
+    window.removeEventListener('pageshow', checkLocation);
+    document.querySelectorAll('style' + owned + ', .ai-heuristic-launcher' + owned).forEach((node) => node.remove());
+    if (options.onStop) options.onStop();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
   return {
-    scanNow, resetAndRescan, stop,
+    scanNow, resetAndRescan, stop, setNotice,
+    getStatus: () => ({ running, stopped, legacyBlocked }),
     getSettings: () => ({ ...settings }),
     getAnalysis: (element) => records.get(element) && records.get(element).analysis,
     engine

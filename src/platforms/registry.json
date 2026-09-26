@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "bundle": {
+    "name": "AI-Style Cues (Local)",
+    "description": "Shows local, explainable writing-style cues on supported social sites.",
+    "output": "ai-style-cues.userscripts.user.js"
+  },
+  "sites": [
+    {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "module": "linkedin.js",
+      "scriptName": "LinkedIn AI-Style Signal (Local)",
+      "description": "Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.",
+      "output": "linkedin-ai-heuristic.userscripts.user.js",
+      "hosts": [
+        "www.linkedin.com",
+        "linkedin.com",
+        "*.linkedin.com",
+        "m.linkedin.com"
+      ],
+      "status": "stable",
+      "capabilities": [
+        "feed",
+        "profile activity",
+        "permalinks",
+        "comments",
+        "collapsed text"
+      ],
+      "excludedPaths": [
+        "/messaging"
+      ]
+    },
+    {
+      "id": "x",
+      "name": "X / Twitter",
+      "module": "x.js",
+      "scriptName": "X AI-Style Signal (Local)",
+      "description": "Adds an experimental, privacy-preserving AI-style signal to X/Twitter posts and replies.",
+      "output": "x-ai-heuristic.userscripts.user.js",
+      "hosts": [
+        "x.com",
+        "www.x.com",
+        "twitter.com",
+        "www.twitter.com"
+      ],
+      "status": "stable",
+      "capabilities": [
+        "posts",
+        "replies",
+        "quoted-post exclusion"
+      ],
+      "excludedPaths": [
+        "/messages"
+      ]
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "module": "reddit.js",
+      "scriptName": "Reddit AI-Style Signal (Local)",
+      "description": "Adds an experimental, privacy-preserving AI-style signal to Reddit posts and comments.",
+      "output": "reddit-ai-heuristic.userscripts.user.js",
+      "hosts": [
+        "www.reddit.com",
+        "reddit.com",
+        "old.reddit.com",
+        "www.old.reddit.com"
+      ],
+      "status": "stable",
+      "capabilities": [
+        "current Reddit",
+        "old Reddit",
+        "posts",
+        "comments",
+        "nested replies"
+      ],
+      "excludedPaths": [
+        "/message",
+        "/chat"
+      ]
+    }
+  ]
+}

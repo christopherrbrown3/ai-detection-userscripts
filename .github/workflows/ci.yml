@@ -26,6 +26,3 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_*.py' -v
       - run: npm test
       - run: python scripts/build_userscripts.py --check
-      - run: node --check linkedin-ai-heuristic.userscripts.user.js
-      - run: node --check x-ai-heuristic.userscripts.user.js
-      - run: node --check reddit-ai-heuristic.userscripts.user.js

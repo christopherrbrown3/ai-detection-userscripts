@@ -1,0 +1,218 @@
+{
+  "baseline": "52c54c3af6315f53550c1d25fa556e237a670afc",
+  "sites": {
+    "linkedin": {
+      "url": "https://www.linkedin.com/feed/",
+      "posts": {
+        "post-1": {
+          "sourceText": "I rebuilt our onboarding checklist last week after three new teammates got stuck in different places. The first draft was too formal, so I added screenshots, actual names, and the odd little exception that everyone forgets. It is not glamorous work, but the handoff was noticeably calmer this time.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "standard",
+              "text": "Standard sample",
+              "reason": "At least 20 words and 2 sentences."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 49,
+            "charCount": 298,
+            "sentenceCount": 3,
+            "avgSentenceLen": 16.333333333333332,
+            "sentenceLenCV": 0.17555765851107402,
+            "typeTokenRatio": 0.9183673469387755,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "post"
+          }
+        },
+        "comment-1": {
+          "sourceText": "This matches my experience. The odd exceptions are usually what people need most.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "short",
+              "text": "Short sample",
+              "reason": "Fewer than 20 words or 2 sentences; patterns may be incidental."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 13,
+            "charCount": 81,
+            "sentenceCount": 2,
+            "avgSentenceLen": 6.5,
+            "sentenceLenCV": 0.38461538461538464,
+            "typeTokenRatio": 1,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "comment"
+          }
+        }
+      }
+    },
+    "x": {
+      "url": "https://x.com/home",
+      "posts": {
+        "tweet-1": {
+          "sourceText": "I tested the new route this morning. The train was faster, but the walk at the other end was much longer than I expected.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "standard",
+              "text": "Standard sample",
+              "reason": "At least 20 words and 2 sentences."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 24,
+            "charCount": 121,
+            "sentenceCount": 2,
+            "avgSentenceLen": 12,
+            "sentenceLenCV": 0.4166666666666667,
+            "typeTokenRatio": 0.7916666666666666,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "post"
+          }
+        }
+      }
+    },
+    "reddit": {
+      "url": "https://www.reddit.com/r/testing",
+      "posts": {
+        "post-reddit": {
+          "sourceText": "A practical repair note from this weekend\nI replaced the loose hinge on Saturday. The supplied screws were too short, so I reused two older ones from the garage. It took longer than expected, but the door finally closes without scraping the floor.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "standard",
+              "text": "Standard sample",
+              "reason": "At least 20 words and 2 sentences."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 43,
+            "charCount": 247,
+            "sentenceCount": 4,
+            "avgSentenceLen": 10.75,
+            "sentenceLenCV": 0.35038416682138057,
+            "typeTokenRatio": 0.8604651162790697,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "post"
+          }
+        },
+        "comment-parent": {
+          "sourceText": "I had the same problem, although a washer fixed mine before I replaced anything.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "short",
+              "text": "Short sample",
+              "reason": "Fewer than 20 words or 2 sentences; patterns may be incidental."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 14,
+            "charCount": 80,
+            "sentenceCount": 1,
+            "avgSentenceLen": 14,
+            "sentenceLenCV": 0,
+            "typeTokenRatio": 0.9285714285714286,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "comment"
+          }
+        },
+        "comment-child": {
+          "sourceText": "Good tip. I will try that if it starts scraping again.",
+          "excluded": {
+            "quotes": 0,
+            "code": 0
+          },
+          "cues": {
+            "level": "cue-none",
+            "text": "0 matched",
+            "families": [],
+            "totalFamilies": 6,
+            "coverage": {
+              "level": "short",
+              "text": "Short sample",
+              "reason": "Fewer than 20 words or 2 sentences; patterns may be incidental."
+            },
+            "assessed": true
+          },
+          "metrics": {
+            "wordCount": 11,
+            "charCount": 54,
+            "sentenceCount": 2,
+            "avgSentenceLen": 5.5,
+            "sentenceLenCV": 0.6363636363636364,
+            "typeTokenRatio": 1,
+            "language": {
+              "state": "supported",
+              "latinRatio": 1,
+              "reason": ""
+            },
+            "kind": "comment"
+          }
+        }
+      }
+    }
+  }
+}

@@ -83,6 +83,7 @@ function createPlatformAdapter() {
   return {
     id: 'linkedin',
     name: 'LinkedIn',
+    observedAttributes: ['data-urn', 'data-id'],
     postSelector,
     commentSelector,
     isTopLevel(element, kind) {

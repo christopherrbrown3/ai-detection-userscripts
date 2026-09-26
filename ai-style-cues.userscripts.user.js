@@ -2,20 +2,28 @@
 // Installation and documentation: https://github.com/christopherrbrown3/ai-detection-userscripts
 
 // ==UserScript==
-// @name         LinkedIn AI-Style Signal (Local)
+// @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
 // @version      0.5.0
-// @description  Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.
+// @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
 // @homepageURL  https://github.com/christopherrbrown3/ai-detection-userscripts
 // @supportURL   https://github.com/christopherrbrown3/ai-detection-userscripts/issues
-// @downloadURL  https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js
-// @updateURL    https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js
+// @downloadURL  https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/ai-style-cues.userscripts.user.js
+// @updateURL    https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/ai-style-cues.userscripts.meta.js
 // @match        https://www.linkedin.com/*
 // @match        https://linkedin.com/*
 // @match        https://*.linkedin.com/*
 // @match        https://m.linkedin.com/*
+// @match        https://x.com/*
+// @match        https://www.x.com/*
+// @match        https://twitter.com/*
+// @match        https://www.twitter.com/*
+// @match        https://www.reddit.com/*
+// @match        https://reddit.com/*
+// @match        https://old.reddit.com/*
+// @match        https://www.old.reddit.com/*
 // @run-at       document-idle
 // @inject-into  content
 // @grant        none
@@ -2143,7 +2151,180 @@ function createPlatformAdapter() {
   };
 }
 return createPlatformAdapter();
+},
+"x": function () {
+function createPlatformAdapter() {
+  'use strict';
+
+  const postSelector = 'article[role="article"]';
+  const commentSelector = 'article[role="article"]';
+
+  function isReply(element) {
+    return Array.from(element.querySelectorAll('div[data-testid="socialContext"]'))
+      .some((context) => /replying to/i.test(aiHeuristicTextContent(context)));
+  }
+
+  function tweetText(element) {
+    let best = null;
+    let quotes = 0;
+    element.querySelectorAll('div[data-testid="tweetText"]').forEach((candidate) => {
+      if (candidate.closest('article[role="article"]') !== element) return;
+      const quote = candidate.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"], div[role="link"]');
+      if (quote && element.contains(quote)) { quotes += 1; return; }
+      if (!best) best = aiHeuristicReadContent(candidate);
+    });
+    best = best || { text: '', excluded: { quotes: 0, code: 0 } };
+    best.excluded.quotes += quotes;
+    return best;
+  }
+
+  return {
+    id: 'x',
+    name: 'X / Twitter',
+    postSelector,
+    commentSelector,
+    kindForElement(element) {
+      return isReply(element) ? 'comment' : 'post';
+    },
+    isTopLevel(element) {
+      return !(element.parentElement && element.parentElement.closest(postSelector));
+    },
+    extractContent(element) {
+      return tweetText(element);
+    },
+    placeBadge(element, badge) {
+      const header = element.querySelector('div[data-testid="User-Name"]');
+      if (header) {
+        header.appendChild(badge);
+        return;
+      }
+      const text = element.querySelector('div[data-testid="tweetText"]');
+      if (text && text.parentElement) {
+        text.parentElement.insertBefore(badge, text);
+        return;
+      }
+      element.insertBefore(badge, element.firstChild);
+    }
+  };
+}
+return createPlatformAdapter();
+},
+"reddit": function () {
+function createPlatformAdapter() {
+  'use strict';
+
+  const postSelector = [
+    'shreddit-post',
+    'div[data-testid="post-container"]',
+    'div.thing.link',
+    'div.thing.self'
+  ].join(', ');
+  const commentSelector = [
+    'shreddit-comment',
+    'div[data-testid="comment"]',
+    'div.comment'
+  ].join(', ');
+  const titleSelector = 'h1, h3, a.title, a[data-testid="post-title"], [slot="title"]';
+  const bodySelector = [
+    'div[data-click-id="text"]',
+    'div[data-testid="post-content"] div[lang]',
+    'div.usertext-body',
+    '[slot="text"]',
+    '[data-testid="post-body"]'
+  ].join(', ');
+  const commentTextSelector = [
+    '[slot="comment"]',
+    '[data-testid="comment-content"]',
+    'div.usertext-body',
+    'div.md'
+  ].join(', ');
+
+  function belongsTo(root, candidate, kind) {
+    if (kind === 'post') {
+      if (candidate.closest(commentSelector)) return false;
+      const nearestShreddit = candidate.closest('shreddit-post');
+      if (root.matches('shreddit-post')) return nearestShreddit === root;
+      const nearestContainer = candidate.closest('div[data-testid="post-container"], div.thing.link, div.thing.self');
+      return !nearestContainer || nearestContainer === root;
+    }
+    if (root.matches('shreddit-comment')) return candidate.closest('shreddit-comment') === root;
+    if (root.matches('div[data-testid="comment"]')) {
+      const shredditOwner = candidate.closest('shreddit-comment');
+      if (shredditOwner && shredditOwner.contains(root)) return true;
+      return candidate.closest('div[data-testid="comment"]') === root;
+    }
+    return candidate.closest('div.comment') === root;
+  }
+
+  function bestOwnedText(root, selector, kind) {
+    let best = { text: '', excluded: { quotes: 0, code: 0 } };
+    root.querySelectorAll(selector).forEach((candidate) => {
+      if (!belongsTo(root, candidate, kind)) return;
+      if (candidate.closest('blockquote, pre, code')) return;
+      const content = aiHeuristicReadContent(candidate);
+      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = content;
+    });
+    return best;
+  }
+
+  function postText(element) {
+    const title = bestOwnedText(element, titleSelector, 'post');
+    const body = bestOwnedText(element, bodySelector, 'post');
+    if (title.text && body.text) {
+      if (body.text.toLowerCase().includes(title.text.toLowerCase()) && title.text.length >= 20) return body;
+      return {
+        text: title.text + '\n' + body.text,
+        excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
+      };
+    }
+    return body.text || body.excluded.quotes || body.excluded.code ? body : title;
+  }
+
+  return {
+    id: 'reddit',
+    name: 'Reddit',
+    postSelector,
+    commentSelector,
+    isTopLevel(element, kind) {
+      if (kind === 'post') {
+        const parentPost = element.parentElement && element.parentElement.closest(postSelector);
+        return !parentPost && !element.closest(commentSelector);
+      }
+      if (element.matches('div[data-testid="comment"]') && element.closest('shreddit-comment')) return false;
+      return true;
+    },
+    extractContent(element, kind) {
+      return kind === 'comment' ? bestOwnedText(element, commentTextSelector, 'comment') : postText(element);
+    },
+    placeBadge(element, badge, kind) {
+      if (kind === 'comment') {
+        const tagline = element.querySelector('p.tagline');
+        if (tagline) {
+          tagline.appendChild(badge);
+          return;
+        }
+        const header = element.querySelector('[data-testid="comment_author_link"], [data-testid="comment-author-link"], header');
+        if (header && header.parentElement) {
+          header.parentElement.appendChild(badge);
+          return;
+        }
+      }
+      const oldTitle = element.querySelector('a.title');
+      if (oldTitle && oldTitle.parentElement) {
+        oldTitle.parentElement.insertBefore(badge, oldTitle.nextSibling);
+        return;
+      }
+      const header = element.querySelector('[data-testid="post-author-link"], header, h1, h3');
+      if (header && header.parentElement) {
+        header.parentElement.appendChild(badge);
+        return;
+      }
+      element.insertBefore(badge, element.firstChild);
+    }
+  };
+}
+return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.0",distribution:"combined"});
 })();

@@ -744,6 +744,7 @@ function createDetectorEngine(options) {
     const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
     for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
     const shared = {
+      modelAvailable: Boolean(selected.model),
       sourceText: extracted.parsed.raw, excluded,
       context: safeContext, cueAssessment, metrics: extracted.metrics
     };
