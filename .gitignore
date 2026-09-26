@@ -9,3 +9,5 @@ node_modules/
 training/data/
 coverage/
 .coverage
+.playwright-mcp/
+output/playwright/

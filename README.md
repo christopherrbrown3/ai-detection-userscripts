@@ -3,12 +3,12 @@
 [![CI](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml/badge.svg)](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f46e5.svg)](LICENSE)
 
-Privacy-first Safari userscripts that add an experimental AI-style signal to posts and comments on LinkedIn, X/Twitter, and Reddit.
+Privacy-first Safari userscripts that show observable writing-style cues on posts and comments on LinkedIn, X/Twitter, and Reddit.
 
 > [!IMPORTANT]
 > This project analyzes surface writing patterns. It cannot prove who or what wrote a post. Short, edited, personalized, multilingual, and mixed-authorship text may be impossible to classify reliably. Never use a badge as the basis for an accusation or high-stakes decision.
 
-![Illustrated badge and analysis popover preview](docs/preview.svg)
+![Style cue badge and highlighted explanations in the browser fixture](docs/preview.png)
 
 ## Install
 
@@ -30,22 +30,21 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-The badge reports matches with a six-segment meter:
+The badge says **Style cues: N matched** and counts the configured pattern families found in the text. Open it to see their descriptions and highlighted examples from the analyzed text. The original post is never marked up or changed.
 
-- **Green, no filled segments** — none of the six configured cue families matched.
-- **Yellow, 1–3 filled segments** — one to three cue families matched.
-- **Red, 4–6 filled segments** — four or more cue families matched.
+- **0 matched** means the rules ran and found no configured patterns. It does not establish human authorship.
+- **Short sample** appears directly on the badge for fewer than 20 words or 2 sentences/list items. Matches in these samples may be incidental.
+- **Not assessed** appears with **Language uncertain** or **Unsupported language** when there is too little evidence to apply the English rules. This is different from zero matches.
 
-The filled segment count is the literal match count; color is redundant status emphasis, not a separate calculation. Screen readers announce the exact count. Every non-empty matched post receives a cue assessment. The details panel separately reports **Short sample** (fewer than 20 words or 2 sentences), **Long sample** (at least 80 words and 4 sentences), or **Standard sample** (everything between those fixed cutoffs). The visible result is an explainable rubric, not a probability or claim that AI wrote the text.
+Short, unassessed, and zero-match badges use neutral colors. Other matches use one accent color without a traffic-light severity scale. Screen readers announce the exact count and sample status. The panel also reports word and sentence counts and classifies longer samples as standard or long (at least 80 words and 4 sentences/list items).
 
-Each rubric point maps to a visible cue family: explicit AI self-reference, formulaic framing, parallel rhetorical rhythm, highly structured presentation, unusually uniform sentence cadence, or repeated content phrasing. Weighted points remain visible as diagnostic intensity within a family, but they do not change the badge's exact family count.
+The six families are explicit model references, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Descriptions report observable patterns, not rhetorical intent or authorship. Lists are excluded from the three prose-based rhythm/repetition checks; counted openings are excluded from phrase repetition. These safeguards reduce overlapping matches without claiming that the families are statistically independent.
 
-Settings are stored locally for the current site and include:
+Settings are stored locally for the current site:
 
-- conservative, balanced, or aggressive thresholds when a calibrated model is installed
 - comments/replies on or off
-- hiding short or unsupported samples
-- hiding posts with 0/6 cue families
+- hiding short or unassessed samples
+- hiding assessed posts with no cues
 
 ## Privacy
 
@@ -59,24 +58,26 @@ See [SECURITY.md](SECURITY.md) for the privacy boundary and reporting guidance.
 
 ## Detection approach
 
-The shared detector core measures compact, explainable signals that can run locally:
+The browser preserves paragraph, line-break, and list boundaries while extracting the author's text. It excludes quotation blocks, quoted reposts where identified by the site adapter, code, and inline quotation/code spans. One deterministic sentence parser supplies both the cue checks and diagnostic metrics, including handling of common abbreviations, decimals, and URLs.
 
-- length-conditioned lexical diversity (MATTR-25)
-- sentence, paragraph, and word-length variation
-- character-, word-pair-, and three-word repetition
-- sentence-opening reuse and short-sentence share
-- function words, contractions, and first/second-person language
-- punctuation, lists, formatting, and boundary-aware template phrases
-- an optional 128-dimension hashed character 3–5-gram profile learned by the offline trainer
-- local segment scoring for sufficiently long mixed-style text when a calibrated model is installed
+The default rules look for exact, inspectable patterns:
 
-Unicode is normalized and invisible formatting characters are removed before analysis. Unsupported or uncertain language evidence reduces or prevents a verdict rather than being treated as evidence of human authorship.
+- explicit model-reference wording, excluding ordinary refusals such as “I cannot”
+- combinations of stock framing phrases instead of a single everyday phrase
+- repeated multiword sentence openings
+- lists or punctuation clusters, with punctuation density adjusted for text length
+- similar prose sentence lengths with minimum sample requirements
+- contiguous repeated 3–5-word phrases, with overlapping spans counted once and repetition measured relative to prose length
 
-The root userscripts are generated from a shared detector and runtime plus thin platform adapters. That architecture prevents Python/JavaScript and cross-platform feature drift while keeping each installed script self-contained.
+Unicode is normalized and invisible formatting characters are removed before analysis. The language check uses script and English function-word evidence; it is a conservative eligibility heuristic, not a language classifier.
+
+Posts approaching the viewport are queued in small batches. Edits re-extract the affected post, unchanged text reuses its analysis, and a bounded cache shares results for duplicate content. Legacy stylometry, character n-gram hashing, and model output are deferred until **Technical details** is opened in the default uncalibrated release.
+
+The root userscripts are generated from a shared detector and runtime plus thin platform adapters. The offline Python extractor mirrors the shared sentence and exclusion rules for diagnostic feature parity.
 
 ## Accuracy policy
 
-The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. It always returns an exact family count, shows every contributing cue, reports the fixed sample class separately, and makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows every contributing cue; otherwise it explicitly reports that the text was not assessed. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
 
 The legacy experimental model output remains available only in Technical details for development comparison. A future trained model may replace the rubric only after a suitable distributable corpus and held-out report are published.
 
@@ -109,7 +110,7 @@ python3 scripts/build_userscripts.py
 python3 scripts/build_userscripts.py --check
 ```
 
-Tests cover feature parity between Python and JavaScript, scoring behavior, threshold selection, grouped splitting, nested DOM ownership, edited-content rescoring, and keyboard-accessible dialogs.
+Tests cover feature parity between Python and JavaScript, cue spans, quotation/code exclusion, list overlap, scoring behavior, threshold selection, grouped splitting, nested DOM ownership, edited-content rescoring, cache reuse, viewport scheduling, and keyboard-accessible dialogs. See [browser validation](docs/browser-validation.md) for the synthetic regression comparison, list ablation, and verification limits.
 
 ## Offline training
 

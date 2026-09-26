@@ -56,7 +56,7 @@ def main() -> None:
         bundle["metadata"].update({
             "calibrated": True,
             "provenance": f"Offline-trained with held-out sigmoid calibration and human-score thresholding; source {Path(args.weights_json).name}.",
-            "feature_set": "stylometry-v2-charhash128",
+            "feature_set": "stylometry-v3-charhash128",
         })
         bundle["models"][key] = model
         path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8")

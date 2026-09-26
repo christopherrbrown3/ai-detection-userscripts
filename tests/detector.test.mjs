@@ -5,9 +5,9 @@ import { loadEngine, loadModels } from './helpers.mjs';
 
 test('short text gets an exact cue count and sample class', () => {
   const engine = loadEngine('x');
-  const analysis = engine.analyze('Great point. I agree!', { kind: 'post' }, { sensitivity: 'balanced' });
+  const analysis = engine.analyze('I agree with your point. That is helpful!', { kind: 'post' }, { sensitivity: 'balanced' });
   assert.equal(analysis.label.level, 'cue-none');
-  assert.equal(analysis.label.text, '0/6 cue families');
+  assert.equal(analysis.label.text, '0 matched');
   assert.equal(analysis.cueAssessment.coverage.level, 'short');
 });
 
@@ -34,10 +34,14 @@ test('long text exposes explainable cue families and plain-language evidence', (
   ].join(' ');
   const analysis = engine.analyze(text, { kind: 'post' }, { sensitivity: 'balanced' });
   assert.notEqual(analysis.evidence.level, 'insufficient');
-  assert.ok(analysis.segments.length >= 2);
-  assert.match(analysis.disclaimer, /not proof/i);
+  assert.equal(analysis.segments.length, 0);
+  assert.equal(analysis.signal, null);
+  const diagnostic = analysis.getDiagnostics();
+  assert.equal(typeof diagnostic.signal, 'number');
+  assert.equal(analysis.getDiagnostics(), diagnostic);
+  assert.match(analysis.disclaimer, /do not establish/i);
   assert.equal(analysis.calibrated, false);
-  assert.equal(analysis.label.text, `${analysis.cueAssessment.families.length}/6 cue families`);
+  assert.equal(analysis.label.text, `${analysis.cueAssessment.families.length} matched`);
   assert.ok(analysis.cueAssessment.families.some((family) => family.id === 'formulaic-framing'));
   assert.ok(analysis.cueAssessment.families.every((family) => family.detail.length > 10));
 });
@@ -59,11 +63,11 @@ test('cue rubric distinguishes a highly patterned post from an irregular anecdot
     { kind: 'post' },
     { sensitivity: 'balanced' }
   );
-  assert.equal(patterned.label.level, 'cue-multiple');
-  assert.equal(patterned.label.text, `${patterned.cueAssessment.families.length}/6 cue families`);
+  assert.equal(patterned.label.level, 'cue-one');
+  assert.equal(patterned.label.text, `${patterned.cueAssessment.families.length} matched`);
   assert.equal(anecdote.label.level, 'cue-none');
-  assert.ok(patterned.cueAssessment.points > anecdote.cueAssessment.points);
-  assert.ok(patterned.cueAssessment.families.some((family) => family.id === 'parallel-rhythm'));
+  assert.ok(patterned.cueAssessment.families.length > anecdote.cueAssessment.families.length);
+  assert.ok(!patterned.cueAssessment.families.some((family) => family.id === 'repeated-openings'));
   assert.ok(patterned.cueAssessment.families.some((family) => family.id === 'structured-presentation'));
 });
 
@@ -74,7 +78,7 @@ test('uncalibrated cue rubric presents an exact family count', () => {
     { kind: 'post' },
     { sensitivity: 'balanced' }
   );
-  assert.equal(analysis.label.text, `${analysis.cueAssessment.families.length}/6 cue families`);
+  assert.equal(analysis.label.text, `${analysis.cueAssessment.families.length} matched`);
   assert.ok(['cue-none', 'cue-one', 'cue-multiple'].includes(analysis.label.level));
 });
 

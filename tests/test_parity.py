@@ -16,6 +16,19 @@ class FeatureParityTests(unittest.TestCase):
         rows = [
             {
                 "kind": "post",
+                "text": 'Dr. Smith paid 3.50 for it. We read https://example.com/a.\nThen we went home.',
+            },
+            {
+                "kind": "post",
+                "text": 'The quote “as an AI 🙂” is excluded.\n> Quoted block\nUse \x60const answer = 42;\x60 here.\n- We close the door.\n- We lock the gate.',
+            },
+            {
+                "kind": "post",
+                "text": 'As an AI language model, I can help you think about the problem.',
+            },
+            {"kind": "comment", "text": ""},
+            {
+                "kind": "post",
                 "text": "Here are three notes:\n- I tried Tuesday's build.\n- It worked twice.\n- Revision 42 failed… why?",
             },
             {

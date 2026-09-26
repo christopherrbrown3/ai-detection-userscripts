@@ -4,7 +4,7 @@
     "version": "0.2.0",
     "calibrated": false,
     "provenance": "Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.",
-    "feature_set": "stylometry-v2-charhash128"
+    "feature_set": "stylometry-v3-charhash128"
   },
   "models": {
     "linkedin:post": {

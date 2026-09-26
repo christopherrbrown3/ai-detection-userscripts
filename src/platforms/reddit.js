@@ -45,11 +45,12 @@ function createPlatformAdapter() {
   }
 
   function bestOwnedText(root, selector, kind) {
-    let best = '';
+    let best = { text: '', excluded: { quotes: 0, code: 0 } };
     root.querySelectorAll(selector).forEach((candidate) => {
       if (!belongsTo(root, candidate, kind)) return;
-      const text = aiHeuristicTextContent(candidate);
-      if (text.length > best.length) best = text;
+      if (candidate.closest('blockquote, pre, code')) return;
+      const content = aiHeuristicReadContent(candidate);
+      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = content;
     });
     return best;
   }
@@ -57,11 +58,14 @@ function createPlatformAdapter() {
   function postText(element) {
     const title = bestOwnedText(element, titleSelector, 'post');
     const body = bestOwnedText(element, bodySelector, 'post');
-    if (title && body) {
-      if (body.toLowerCase().includes(title.toLowerCase()) && title.length >= 20) return body;
-      return `${title}\n${body}`;
+    if (title.text && body.text) {
+      if (body.text.toLowerCase().includes(title.text.toLowerCase()) && title.text.length >= 20) return body;
+      return {
+        text: title.text + '\n' + body.text,
+        excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
+      };
     }
-    return title || body;
+    return body.text || body.excluded.quotes || body.excluded.code ? body : title;
   }
 
   return {
@@ -77,7 +81,7 @@ function createPlatformAdapter() {
       if (element.matches('div[data-testid="comment"]') && element.closest('shreddit-comment')) return false;
       return true;
     },
-    extractText(element, kind) {
+    extractContent(element, kind) {
       return kind === 'comment' ? bestOwnedText(element, commentTextSelector, 'comment') : postText(element);
     },
     placeBadge(element, badge, kind) {

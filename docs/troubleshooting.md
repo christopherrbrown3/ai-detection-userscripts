@@ -5,8 +5,12 @@
 1. Confirm the script is enabled in Userscripts.
 2. In Safari settings, grant the Userscripts extension access to the affected website.
 3. Refresh the page after installation or update.
-4. Check whether zero-filled meters or short/unsupported samples are hidden in the badge settings.
-5. Short posts are still assessed; the details panel reports their fixed sample class and exact word/sentence counts.
+4. Check whether assessed posts with no cues or short/unassessed samples are hidden in the badge settings. A **Style cue settings** button remains available while a filter is active.
+5. Scroll the post into or near the viewport; offscreen posts wait until they approach it. Short English samples can still show matched cues, with **Short sample** on the badge.
+
+## A badge says “not assessed”
+
+The English cue rules could not establish enough language evidence. The script deliberately distinguishes this from zero matched patterns. Very short English fragments, multilingual text, and text consisting only of quotations or code may receive this status. The details panel explains the reason and reports excluded material.
 
 ## Comments or replies are missing
 
@@ -14,7 +18,7 @@ Open any visible badge, then enable **Analyze comments and replies**. Some sites
 
 ## A badge shows an old assessment
 
-Version 0.2+ hashes the extracted text and rescans edits, translations, and expansions. If a stale assessment persists, refresh the page and file an issue with the site, page type, Safari version, and a sanitized DOM snippet.
+Version 0.4 queues the affected post after edits, translations, and expansions, and reuses the result only when the extracted content is unchanged. An offscreen edit is analyzed when the post approaches the viewport. If a stale assessment persists, refresh the page and file an issue with the site, page type, Safari version, and a sanitized DOM snippet.
 
 ## A badge is duplicated or attached to the wrong text
 
