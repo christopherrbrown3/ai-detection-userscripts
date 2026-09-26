@@ -2,8 +2,8 @@
 
 The three root-level `.user.js` files are generated, self-contained release artifacts.
 
-- `detector.js` contains the shared, DOM-free feature extraction and scoring engine.
-- `runtime.js` contains shared settings, rescoring, accessibility, and popover behavior.
+- `detector.js` contains the shared sentence parser, observable cue rules, source spans, and diagnostic feature/scoring engine. Default analysis defers full diagnostics until requested.
+- `runtime.js` contains structural DOM extraction, viewport/mutation scheduling, bounded caching, settings, accessibility, and highlighted explanations.
 - `platforms/` contains only site-specific extraction and badge-placement adapters.
 - `../models/default-models.json` is the single model/threshold source.
 

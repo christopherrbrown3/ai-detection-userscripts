@@ -5,7 +5,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'stylometry-v2';
+  const ANALYSIS_VERSION = 'browser-cues-v3';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -26,8 +26,8 @@ function createDetectorEngine(options) {
       'thrilled to', 'grateful for', 'honored to', 'humble', 'delighted to share', 'proud to'
     ],
     hedge: [
-      'as an ai', 'as a language model', 'i cannot', "i'm unable", 'i am unable',
-      "i don't have access", 'cannot provide', 'i cannot provide'
+      'as an ai', 'as a language model', 'as an artificial intelligence',
+      'i am an ai', "i'm an ai", 'i am a language model'
     ],
     transition: [
       'in conclusion', 'overall', 'to sum up', 'moreover', 'furthermore', 'additionally',
@@ -128,6 +128,77 @@ function createDetectorEngine(options) {
     return matches.map((token) => token.toLowerCase());
   }
 
+  // One deterministic parser is shared by cues, metrics and segment diagnostics.
+  // Keep UTF-16 offsets so excerpts can highlight the exact normalized source.
+  function parseText(text) {
+    const raw = normalizeText(text);
+    const excluded = [];
+    const exclusionRe = /\x60{3}[\s\S]*?(?:\x60{3}|$)|\x60[^\x60\n]+\x60|^>[^\n]*|“[^”]*”|"[^"\n]*"|‘[^’\n]+’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gmu;
+    const masked = raw.replace(exclusionRe, (value, offset) => {
+      excluded.push({ start: offset, end: offset + value.length, kind: value.charCodeAt(0) === 96 ? 'code' : 'quotes' });
+      return value.replace(/[^\n]/g, ' ');
+    });
+    const sentences = [];
+    const boundaryRe = /[.!?]+(?:[)\]]+)?(?=\s|$)|\n+/g;
+    const abbreviations = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'vs', 'etc', 'e.g', 'i.e', 'u.s', 'u.k']);
+    let start = 0;
+    function append(end) {
+      const piece = masked.slice(start, end);
+      const leading = piece.length - piece.trimStart().length;
+      const trimmed = piece.trim();
+      const tokens = tokenize(trimmed);
+      if (tokens.length) {
+        const offset = start + leading;
+        const lineStart = masked.lastIndexOf('\n', offset - 1) + 1;
+        sentences.push({
+          text: trimmed, start: offset, end: offset + trimmed.length, tokens,
+          length: tokens.length,
+          isList: /^\s*(?:[-*•]|\d+[.)])\s+/.test(masked.slice(lineStart))
+        });
+      }
+      start = end;
+    }
+    let match;
+    while ((match = boundaryRe.exec(masked))) {
+      if (match[0] === '.') {
+        const prefix = masked.slice(start, match.index);
+        const word = (prefix.match(/([A-Za-z.]+)$/) || [])[1] || '';
+        if (abbreviations.has(word.toLowerCase()) || /^[A-Z]$/.test(word) || /^\s*\d+$/.test(prefix)) continue;
+      }
+      append(match.index + match[0].length);
+    }
+    append(masked.length);
+    return { raw, masked, sentences, excluded };
+  }
+
+  function phraseSpans(parsed, phrases) {
+    const normalized = normalizeApostrophes(parsed.masked);
+    const spans = [];
+    for (const phrase of phrases) {
+      const re = new RegExp('(^|[^\\p{L}\\p{N}])(' + escapeRegExp(phrase).replace(/ /g, '[ \\t]+') + ')(?=$|[^\\p{L}\\p{N}])', 'giu');
+      let match;
+      while ((match = re.exec(normalized))) {
+        const start = match.index + match[1].length;
+        const end = start + match[2].length;
+        if (!parsed.excluded.some((span) => start < span.end && end > span.start)) {
+          spans.push({ start, end });
+        }
+      }
+    }
+    return spans.sort((a, b) => a.start - b.start || b.end - a.end)
+      .filter((span, index, all) => !all.slice(0, index).some((prior) => prior.start <= span.start && prior.end >= span.end));
+  }
+
+  function tokensWithOffsets(sentence) {
+    const spans = [];
+    const re = new RegExp(unicodeWordRe.source, 'gu');
+    let match;
+    while ((match = re.exec(sentence.text))) {
+      spans.push({ word: normalizeApostrophes(match[0]).toLowerCase(), start: sentence.start + match.index, end: sentence.start + match.index + match[0].length });
+    }
+    return spans;
+  }
+
   function mean(values) {
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   }
@@ -187,160 +258,147 @@ function createDetectorEngine(options) {
     return total;
   }
 
-  function matchedPhrases(text, phrases) {
-    const normalized = normalizeApostrophes(text).toLowerCase();
-    return phrases.filter((phrase) => {
-      const source = `(^|[^a-z0-9])${escapeRegExp(phrase)}(?=$|[^a-z0-9])`;
-      return new RegExp(source).test(normalized);
-    });
-  }
-
-  function repeatedContentBigramRatio(tokens) {
-    const content = tokens.filter((token) => token.length > 2 && !STOPWORDS.has(token));
-    if (content.length < 12) return 0;
-    const counts = new Map();
-    for (let index = 0; index < content.length - 1; index += 1) {
-      const key = `${content[index]} ${content[index + 1]}`;
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    const repeated = Array.from(counts.values()).filter((count) => count > 1)
-      .reduce((sum, count) => sum + count - 1, 0);
-    return repeated / Math.max(1, content.length - 1);
-  }
-
   function heuristicCoverage(metrics) {
     if (metrics.language.state === 'unsupported') {
-      return { level: 'unsupported', text: 'Unsupported-language sample', reason: metrics.language.reason };
+      return { level: 'unsupported', text: 'Unsupported language', reason: metrics.language.reason };
+    }
+    if (metrics.language.state === 'uncertain') {
+      return { level: 'uncertain', text: 'Language uncertain', reason: metrics.language.reason };
     }
     if (metrics.wordCount < 20 || metrics.sentenceCount < 2) {
-      return {
-        level: 'short',
-        text: 'Short sample',
-        reason: 'fewer than 20 words or 2 sentences'
-      };
+      return { level: 'short', text: 'Short sample', reason: 'Fewer than 20 words or 2 sentences; patterns may be incidental.' };
     }
-    if (metrics.wordCount >= 80 && metrics.sentenceCount >= 4 && metrics.language.state === 'supported') {
-      return {
-        level: 'long',
-        text: 'Long sample',
-        reason: 'at least 80 words and 4 sentences'
-      };
+    if (metrics.wordCount >= 80 && metrics.sentenceCount >= 4) {
+      return { level: 'long', text: 'Long sample', reason: 'At least 80 words and 4 sentences.' };
     }
-    return {
-      level: 'standard',
-      text: 'Standard sample',
-      reason: 'at least 20 words and 2 sentences, below the long-sample cutoff'
-    };
+    return { level: 'standard', text: 'Standard sample', reason: 'At least 20 words and 2 sentences.' };
   }
 
   function analyzeStyleCues(rawText, extracted) {
-    const raw = normalizeText(rawText);
-    const sentences = raw.split(/(?<=[.!?])\s+|\n+/)
-      .map((sentence) => sentence.trim())
-      .filter(Boolean);
-    const sentenceLengths = sentences.map((sentence) => tokenize(sentence).length).filter(Boolean);
-    const families = [];
-
-    const hedgeMatches = matchedPhrases(raw, PHRASES.hedge);
-    if (hedgeMatches.length) {
-      families.push({
-        id: 'self-disclosure',
-        name: 'AI self-reference',
-        points: 3,
-        detail: `Explicit wording: ${hedgeMatches.slice(0, 2).join(', ')}`
-      });
-    }
-
-    const framingMatches = [
-      ...matchedPhrases(raw, PHRASES.template),
-      ...matchedPhrases(raw, PHRASES.transition),
-      ...matchedPhrases(raw, PHRASES.rhetorical)
-    ];
-    const buzzMatches = matchedPhrases(raw, PHRASES.buzz);
-    const formulaicStrength = framingMatches.length + (buzzMatches.length >= 2 ? 1 : 0);
-    if (formulaicStrength) {
-      const examples = Array.from(new Set([...framingMatches, ...buzzMatches])).slice(0, 4);
-      families.push({
-        id: 'formulaic-framing',
-        name: 'Formulaic framing',
-        points: formulaicStrength >= 3 ? 2 : 1,
-        detail: `Stock framing or promotional phrases: ${examples.join(', ')}`
-      });
-    }
-
-    const ignoredStarters = new Set(['i', 'we', 'you', 'the', 'a', 'an', 'this', 'that', 'it']);
-    const starterCounts = new Map();
-    for (const sentence of sentences) {
-      const starter = tokenize(sentence)[0];
-      if (!starter || ignoredStarters.has(starter)) continue;
-      starterCounts.set(starter, (starterCounts.get(starter) || 0) + 1);
-    }
-    const repeatedStarters = Array.from(starterCounts.entries())
-      .filter(([, count]) => count >= 2)
-      .sort((left, right) => right[1] - left[1]);
-    let maxShortRun = 0;
-    let shortRun = 0;
-    for (const length of sentenceLengths) {
-      if (length <= 12) {
-        shortRun += 1;
-        maxShortRun = Math.max(maxShortRun, shortRun);
-      } else shortRun = 0;
-    }
-    if (repeatedStarters.length || maxShortRun >= 3) {
-      const details = [];
-      if (repeatedStarters.length) {
-        details.push(`repeated openings (${repeatedStarters.slice(0, 3).map(([word, count]) => `${word} x${count}`).join(', ')})`);
-      }
-      if (maxShortRun >= 3) details.push(`${maxShortRun} consecutive short rhetorical sentences`);
-      families.push({
-        id: 'parallel-rhythm',
-        name: 'Parallel rhetorical rhythm',
-        points: repeatedStarters.length && maxShortRun >= 3 ? 2 : 1,
-        detail: details.join('; ')
-      });
-    }
-
-    const listMarkers = raw.split('\n').filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line)).length;
-    const colonCount = (raw.match(/:/g) || []).length;
-    const emDashCount = (raw.match(/[—–]/g) || []).length;
-    if (listMarkers >= 3 || (colonCount >= 2 && emDashCount >= 1) || (emDashCount >= 3 && sentences.length >= 4)) {
-      const parts = [];
-      if (listMarkers) parts.push(`${listMarkers} list markers`);
-      if (colonCount) parts.push(`${colonCount} colons`);
-      if (emDashCount) parts.push(`${emDashCount} dash asides`);
-      families.push({
-        id: 'structured-presentation',
-        name: 'Highly structured presentation',
-        points: 1,
-        detail: parts.join(', ')
-      });
-    }
-
-    if (sentences.length >= 5 && extracted.metrics.sentenceLenCV <= 0.28) {
-      families.push({
-        id: 'sentence-uniformity',
-        name: 'Uniform sentence cadence',
-        points: 1,
-        detail: `Sentence-length variation is low across ${sentences.length} sentences`
-      });
-    }
-
-    const contentRepeat = repeatedContentBigramRatio(extracted.tokens);
-    if (extracted.metrics.wordCount >= 60 && contentRepeat >= 0.08) {
-      families.push({
-        id: 'content-repetition',
-        name: 'Repeated content phrasing',
-        points: 1,
-        detail: `${Math.round(contentRepeat * 100)}% repeated content-word pairs after stopword removal`
-      });
-    }
-
+    const parsed = extracted.parsed || parseText(rawText);
+    const raw = parsed.masked;
     const coverage = heuristicCoverage(extracted.metrics);
-    const points = families.reduce((sum, family) => sum + family.points, 0);
-    const totalFamilies = 6;
-    const level = families.length === 0 ? 'cue-none' : families.length === 1 ? 'cue-one' : 'cue-multiple';
-    const text = `${families.length}/${totalFamilies} cue families`;
-    return { level, text, points, families, totalFamilies, coverage, contentRepeat };
+    const families = [];
+    const assessed = !['unsupported', 'uncertain'].includes(coverage.level);
+    const prose = parsed.sentences.filter((sentence) => !sentence.isList);
+    const proseTokens = prose.map(tokensWithOffsets);
+    const proseWordCount = prose.reduce((sum, sentence) => sum + sentence.length, 0);
+    function add(id, name, detail, spans) {
+      families.push({ id, name, detail, spans: spans.slice(0, 8) });
+    }
+
+    if (assessed) {
+      const references = phraseSpans(parsed, PHRASES.hedge);
+      if (references.length) {
+        add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
+      }
+
+      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical]);
+      const buzz = phraseSpans(parsed, PHRASES.buzz);
+      // One everyday phrase or promotional adjective is too little to flag.
+      const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
+      const distinctBuzz = new Set(buzz.map((span) => raw.slice(span.start, span.end).toLowerCase()));
+      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2)) {
+        add('formulaic-framing', 'Stock framing phrases',
+          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.',
+          [...framing, ...buzz].sort((a, b) => a.start - b.start));
+      }
+
+      const openingGroups = new Map();
+      for (const tokens of proseTokens) {
+        if (tokens.length < 2) continue;
+        const first = tokens.slice(0, 2);
+        if (first.every((token) => STOPWORDS.has(token.word))) continue;
+        if (parsed.excluded.some((span) => first[0].start < span.end && first[1].end > span.start)) continue;
+        const key = first.map((token) => token.word).join(' ');
+        if (!openingGroups.has(key)) openingGroups.set(key, []);
+        openingGroups.get(key).push({ start: first[0].start, end: first[1].end });
+      }
+      const repeatedOpenings = Array.from(openingGroups.values())
+        .filter((spans) => spans.length >= 2 && spans.length / Math.max(1, prose.length) >= 0.3);
+      for (const spans of repeatedOpenings) {
+        const groups = spans.map((span) => proseTokens.find((tokens) => tokens[0] && tokens[0].start === span.start));
+        let sharedLength = 2;
+        while (sharedLength < 8 && groups.every((tokens) => tokens[sharedLength] &&
+          tokens[sharedLength].word === groups[0][sharedLength].word &&
+          !parsed.excluded.some((span) => tokens[0].start < span.end && tokens[sharedLength].end > span.start))) sharedLength += 1;
+        spans.forEach((span, index) => { span.end = groups[index][sharedLength - 1].end; });
+      }
+      const openingSpans = repeatedOpenings.flat();
+      if (prose.length >= 3 && openingSpans.length) {
+        add('repeated-openings', 'Repeated sentence openings',
+          openingSpans.length + ' of ' + prose.length + ' prose sentences reuse a multiword opening.', openingSpans);
+      }
+
+      const listSpans = Array.from(raw.matchAll(/^\s*(?:[-*•]|\d+[.)])\s+[^\n]+/gm), (match) => ({
+        start: match.index + match[0].length - match[0].trimStart().length,
+        end: match.index + match[0].length
+      }));
+      const punctuation = Array.from(raw.matchAll(/:(?!\/\/)|[—–]/g), (match) => ({ start: match.index, end: match.index + 1 }));
+      const colons = punctuation.filter((span) => raw[span.start] === ':').length;
+      const dashes = (raw.match(/[—–]/g) || []).length;
+      if (listSpans.length >= 3 || (extracted.metrics.wordCount >= 30 &&
+        ((colons >= 2 && dashes >= 1) || dashes >= 3) &&
+        punctuation.length * 100 / extracted.metrics.wordCount >= 4)) {
+        add('structured-presentation', 'List and punctuation structure',
+          listSpans.length + ' list items; ' + colons + ' colons; ' + dashes + ' dashes.',
+          listSpans.length >= 3 ? listSpans : punctuation);
+      }
+
+      const lengths = prose.map((sentence) => sentence.length);
+      const variation = coefficientOfVariation(lengths);
+      if (prose.length >= 5 && proseWordCount >= 40 && variation <= 0.28) {
+        add('sentence-uniformity', 'Similar sentence lengths',
+          'Prose sentence lengths: ' + lengths.slice(0, 12).join(', ') +
+          (lengths.length > 12 ? ', …' : '') + ' words. Variation: ' + variation.toFixed(2) + '. List items are excluded.',
+          prose.map(({ start, end }) => ({ start, end })));
+      }
+
+      // Actual contiguous spans, never pairs invented by deleting stopwords.
+      const patterns = new Map();
+      for (const tokens of proseTokens) {
+        for (let size = 5; size >= 3; size -= 1) {
+          for (let index = 0; index <= tokens.length - size; index += 1) {
+            const words = tokens.slice(index, index + size);
+            if (words.every((token) => STOPWORDS.has(token.word))) continue;
+            const start = words[0].start;
+            const end = words[words.length - 1].end;
+            if (parsed.excluded.some((span) => start < span.end && end > span.start)) continue;
+            if (families.some((family) => family.id === 'repeated-openings') &&
+              openingSpans.some((span) => start < span.end && end > span.start)) continue;
+            const key = words.map((token) => token.word).join(' ');
+            if (!patterns.has(key)) patterns.set(key, { size, spans: [] });
+            const candidate = patterns.get(key);
+            if (!candidate.spans.length || start >= candidate.spans[candidate.spans.length - 1].end) {
+              candidate.spans.push({ start, end });
+            }
+          }
+        }
+      }
+      const repetitions = Array.from(patterns.values()).filter((pattern) => pattern.spans.length >= 2)
+        .sort((a, b) => b.size - a.size || b.spans.length - a.spans.length);
+      const selected = [];
+      const used = [];
+      let repeatedWords = 0;
+      for (const pattern of repetitions) {
+        const available = pattern.spans.filter((span) => !used.some((prior) => span.start < prior.end && span.end > prior.start));
+        if (available.length < 2) continue;
+        selected.push(...available);
+        used.push(...available);
+        repeatedWords += (available.length - 1) * pattern.size;
+        if (selected.length >= 8) break;
+      }
+      const repetitionRate = repeatedWords / Math.max(1, proseWordCount);
+      if (proseWordCount >= 40 && repetitionRate >= 0.08) {
+        add('content-repetition', 'Repeated phrases',
+          Math.round(repetitionRate * 100) + '% of prose words repeat an earlier 3–5-word phrase. List items and counted openings are excluded.', selected);
+      }
+    }
+    const level = !assessed ? 'unassessed' : families.length === 0 ? 'cue-none' : families.length === 1 ? 'cue-one' : 'cue-multiple';
+    return {
+      level, text: assessed ? families.length + ' matched' : 'Not assessed',
+      families, totalFamilies: 6, coverage, assessed
+    };
   }
 
   function fnv1a(text) {
@@ -372,7 +430,7 @@ function createDetectorEngine(options) {
     return norm ? vector.map((value) => value / norm) : vector;
   }
 
-  function languageSupport(rawText, tokens, stopwordRatio) {
+  function languageSupport(rawText, tokens) {
     const letters = rawText.match(unicodeLetterRe) || [];
     if (!letters.length) return { state: 'unsupported', latinRatio: 0, reason: 'no letter evidence' };
     const latinLetters = (rawText.match(/[A-Za-z]/g) || []).length;
@@ -380,24 +438,38 @@ function createDetectorEngine(options) {
     if (latinRatio < 0.72) {
       return { state: 'unsupported', latinRatio, reason: 'non-Latin or mixed-script text' };
     }
-    if (tokens.length >= 20 && stopwordRatio < 0.055) {
-      return { state: 'uncertain', latinRatio, reason: 'English language could not be established' };
+    const sharedWords = new Set(['a', 'an', 'i', 'no', 'me', 'so', 'he', 'be', 'on']);
+    const englishWords = tokens.filter((token) => STOPWORDS.has(token) && !sharedWords.has(token));
+    if (new Set(englishWords).size < 2 || englishWords.length / Math.max(1, tokens.length) < 0.1) {
+      return { state: 'uncertain', latinRatio, reason: 'Too little English language evidence for these English cue rules.' };
     }
     return { state: 'supported', latinRatio, reason: '' };
   }
 
-  function extractFeatures(rawText, context) {
-    const raw = normalizeText(rawText);
+  function extractFeatures(rawText, context, options) {
+    const parsed = parseText(rawText);
+    const raw = parsed.masked;
     const cleaned = raw.replace(/\s+/g, ' ');
     const tokens = tokenize(cleaned);
     const wordCount = tokens.length;
     const charCount = cleaned.length;
 
-    const sentenceTexts = cleaned.split(/[.!?]+|\n+/).map((value) => value.trim()).filter(Boolean);
-    const sentenceLengths = sentenceTexts.map((sentence) => tokenize(sentence).length).filter(Boolean);
-    const sentenceCount = Math.max(1, sentenceLengths.length);
+    const sentenceTexts = parsed.sentences.map((sentence) => sentence.text);
+    const sentenceLengths = parsed.sentences.map((sentence) => sentence.length);
+    const sentenceCount = sentenceLengths.length;
     const avgSentenceLen = mean(sentenceLengths) || wordCount;
     const sentenceLenCV = coefficientOfVariation(sentenceLengths);
+    if (options && options.lightweight) {
+      return {
+        parsed, cleaned, tokens,
+        metrics: {
+          wordCount, charCount, sentenceCount, avgSentenceLen, sentenceLenCV,
+          typeTokenRatio: wordCount ? new Set(tokens).size / wordCount : 0,
+          language: languageSupport(raw, tokens),
+          kind: context && context.kind === 'comment' ? 'comment' : 'post'
+        }
+      };
+    }
     const shortSentenceRatio = sentenceLengths.length
       ? sentenceLengths.filter((length) => length <= 8).length / sentenceLengths.length
       : 0;
@@ -462,7 +534,7 @@ function createDetectorEngine(options) {
     }
 
     const per100 = (count) => wordCount ? count * 100 / wordCount : 0;
-    const language = languageSupport(raw, tokens, stopwordRatio);
+    const language = languageSupport(raw, tokens);
     const features = {
       typeTokenRatio: clamp(typeTokenRatio, 0, 1),
       mattr25: clamp(mattr25, 0, 1),
@@ -500,6 +572,7 @@ function createDetectorEngine(options) {
     };
 
     return {
+      parsed,
       cleaned,
       tokens,
       features,
@@ -603,7 +676,7 @@ function createDetectorEngine(options) {
   }
 
   function splitIntoSegments(text) {
-    const pieces = normalizeText(text).match(/[^.!?\n]+(?:[.!?]+|\n+|$)/g) || [];
+    const pieces = parseText(text).sentences.map((sentence) => sentence.text);
     const segments = [];
     let current = [];
     let count = 0;
@@ -659,17 +732,43 @@ function createDetectorEngine(options) {
     return { level: 'strong', text: 'Strong AI-style signal' };
   }
 
-  function analyze(rawText, context, settings) {
+  function analyze(rawText, context, settings, options) {
     const safeContext = context || { kind: 'post' };
     const safeSettings = settings || { sensitivity: 'balanced' };
-    const extracted = extractFeatures(rawText, safeContext);
-    const selected = getModel(extracted.metrics.kind);
+    const selected = getModel(safeContext.kind);
+    const calibration = selected.model && selected.model.calibration;
+    const calibrated = Boolean(calibration && Number.isFinite(calibration.slope) && Number.isFinite(calibration.intercept));
+    const lightweight = !calibrated && !(options && options.diagnostics);
+    const extracted = extractFeatures(rawText, safeContext, { lightweight });
+    const cueAssessment = analyzeStyleCues(rawText, extracted);
+    const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
+    for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
+    const shared = {
+      sourceText: extracted.parsed.raw, excluded,
+      context: safeContext, cueAssessment, metrics: extracted.metrics
+    };
+    if (lightweight) {
+      let diagnostics;
+      return {
+        ...shared, version: ANALYSIS_VERSION, platform, kind: extracted.metrics.kind,
+        modelKey: selected.key, calibrated: false,
+        label: { level: cueAssessment.level, text: cueAssessment.text },
+        signal: null, signalPercent: null, segments: [], mixed: false,
+        evidence: computeEvidence(extracted.metrics),
+        getDiagnostics() {
+          if (!diagnostics) diagnostics = analyze(rawText, safeContext, safeSettings, { diagnostics: true });
+          return diagnostics;
+        },
+        disclaimer: 'Style patterns do not establish authorship.'
+      };
+    }
     const scored = scoreExtracted(extracted, selected.model);
     const evidence = computeEvidence(extracted.metrics);
     const thresholds = sensitivityThresholds(selected.model, safeSettings.sensitivity || 'balanced');
-    const segmentAnalysis = analyzeSegments(rawText, safeContext, selected.model, thresholds);
-    const cueAssessment = analyzeStyleCues(rawText, extracted);
-    const label = labelAnalysis(
+    const segmentAnalysis = options && options.diagnostics && scored.calibrated
+      ? analyzeSegments(extracted.parsed.masked, safeContext, selected.model, thresholds)
+      : { mixed: false, segments: [] };
+    const label = !cueAssessment.assessed ? { level: 'unassessed', text: 'Not assessed' } : labelAnalysis(
       scored.signal,
       evidence,
       segmentAnalysis.mixed,
@@ -689,6 +788,7 @@ function createDetectorEngine(options) {
     counterSignals.push(...evidence.reasons);
 
     return {
+      ...shared,
       version: ANALYSIS_VERSION,
       platform,
       kind: extracted.metrics.kind,
@@ -728,6 +828,7 @@ function createDetectorEngine(options) {
     extractFeatures,
     hashedCharacterNgrams,
     countPhraseHits,
+    parseText,
     analyzeStyleCues,
     scoreExtracted
   };

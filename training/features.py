@@ -28,8 +28,8 @@ PHRASES = {
         "thrilled to", "grateful for", "honored to", "humble", "delighted to share", "proud to",
     ],
     "hedge": [
-        "as an ai", "as a language model", "i cannot", "i'm unable", "i am unable",
-        "i don't have access", "cannot provide", "i cannot provide",
+        "as an ai", "as a language model", "as an artificial intelligence",
+        "i am an ai", "i'm an ai", "i am a language model",
     ],
     "transition": [
         "in conclusion", "overall", "to sum up", "moreover", "furthermore", "additionally",
@@ -161,17 +161,45 @@ class Extracted:
     char_ngrams: List[float]
 
 
-def extract_features(text: str, *, kind: str) -> Extracted:
+
+def parse_text(text: str) -> Tuple[str, List[str]]:
+    """Mirror the browser parser; no environment-dependent sentence tokenizer."""
     raw = normalize_text(text)
+    exclusion = r'''\x60{3}[\s\S]*?(?:\x60{3}|$)|\x60[^\x60\n]+\x60|^>[^\n]*|“[^”]*”|"[^"\n]*"|‘[^’\n]+’|(?<!\w)'[^'\n]+'(?!\w)'''
+
+    def mask(match: re.Match) -> str:
+        return "".join("\n" if char == "\n" else " " * len(utf16_units(char)) for char in match.group())
+
+    raw = re.sub(exclusion, mask, raw, flags=re.M)
+    abbreviations = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "u.s", "u.k"}
+    sentences = []
+    start = 0
+    for match in re.finditer(r"[.!?]+(?:[)\]]+)?(?=\s|$)|\n+", raw):
+        if match.group() == ".":
+            prefix = raw[start:match.start()]
+            word_match = re.search(r"([A-Za-z.]+)$", prefix)
+            word = word_match.group(1) if word_match else ""
+            if word.lower() in abbreviations or re.fullmatch(r"[A-Z]", word) or re.fullmatch(r"\s*\d+", prefix):
+                continue
+        piece = raw[start:match.end()].strip()
+        if tokenize(piece):
+            sentences.append(piece)
+        start = match.end()
+    piece = raw[start:].strip()
+    if tokenize(piece):
+        sentences.append(piece)
+    return raw, sentences
+
+def extract_features(text: str, *, kind: str) -> Extracted:
+    raw, sentence_texts = parse_text(text)
     cleaned = re.sub(r"\s+", " ", raw)
     tokens = tokenize(cleaned)
     word_count = len(tokens)
     char_count = len(utf16_units(cleaned))
 
-    sentence_texts = [value.strip() for value in re.split(r"[.!?]+|\n+", cleaned) if value.strip()]
     sentence_lengths = [len(tokenize(sentence)) for sentence in sentence_texts]
     sentence_lengths = [length for length in sentence_lengths if length]
-    sentence_count = max(1, len(sentence_lengths))
+    sentence_count = len(sentence_lengths)
     avg_sentence_len = mean(sentence_lengths) or float(word_count)
     sentence_len_cv = coefficient_of_variation(sentence_lengths)
     short_sentence_ratio = (

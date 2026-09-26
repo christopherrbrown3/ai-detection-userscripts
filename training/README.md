@@ -2,6 +2,10 @@
 
 The installed userscripts never download a model or transmit text. This directory trains compact logistic-regression models offline and exports their weights, character n-gram profile, calibration parameters, and false-positive-controlled thresholds into the self-contained scripts.
 
+## Feature compatibility
+
+Userscript 0.4 uses the `stylometry-v3-charhash128` diagnostic feature set. Sentence boundaries, quotation/code masking, and model-reference phrases now mirror the browser parser. Previous learned weights require retraining and held-out validation against these changed feature definitions before release. The shipped weights remain an uncalibrated diagnostic baseline; this release adds no trained classifier or new benchmark accuracy claim.
+
 ## Install
 
 ```bash

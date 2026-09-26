@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 REPOSITORY = "https://github.com/christopherrbrown3/ai-detection-userscripts"
 RAW_REPOSITORY = "https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main"
 

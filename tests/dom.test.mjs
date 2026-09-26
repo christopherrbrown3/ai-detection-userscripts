@@ -161,64 +161,21 @@ test('badges open a keyboard-accessible dialog with settings', () => {
   const article = document.querySelector('#tweet-1');
   const badge = document.querySelector('.ai-heuristic-badge');
   const analysis = __controller.getAnalysis(article);
-  const badgeMeter = badge.querySelector('.ai-heuristic-meter');
-  assert.match(badge.textContent, /AI Score/);
-  assert.equal(badgeMeter.querySelectorAll('.ai-heuristic-meter__segment').length, 6);
-  assert.equal(
-    badgeMeter.querySelectorAll('.ai-heuristic-meter__segment[data-filled="true"]').length,
-    analysis.cueAssessment.families.length
-  );
+  assert.match(badge.textContent, /Style cues: 0 matched/);
+  assert.match(badge.getAttribute('aria-label'), /Style cues/);
   badge.click();
   const dialog = document.querySelector('[role="dialog"]');
   assert.ok(dialog);
   assert.equal(badge.getAttribute('aria-expanded'), 'true');
   assert.equal(dialog.querySelector('select[aria-label="Detector sensitivity"]'), null);
-  assert.match(dialog.textContent, /configured cue families matched/i);
-  assert.match(dialog.textContent, /describes observable style, not authorship/i);
-  assert.match(dialog.textContent, /Cues found/i);
+  assert.match(dialog.textContent, /matched/i);
+  assert.match(dialog.textContent, /do not establish authorship/i);
+  assert.match(dialog.textContent, /Observed patterns/i);
   assert.doesNotMatch(dialog.textContent, /Local style segments/i);
-  const dialogMeter = dialog.querySelector('[role="meter"]');
-  assert.equal(dialogMeter.getAttribute('aria-valuenow'), String(analysis.cueAssessment.families.length));
-  assert.equal(dialogMeter.getAttribute('aria-valuemax'), '6');
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(document.querySelector('[role="dialog"]'), null);
   assert.equal(badge.getAttribute('aria-expanded'), 'false');
   dom.window.close();
-});
-
-test('cue meter uses green, yellow, and red status bands', () => {
-  function render(text, id) {
-    const html = `<!doctype html><html><body><main><div data-testid="mainFeed">
-      <div id="${id}"><div data-testid="expandable-text-box">${text}</div></div>
-    </div></main></body></html>`;
-    return loadDom('linkedin', html, 'https://www.linkedin.com/feed/');
-  }
-
-  const clearDom = render(
-    'I fixed the back gate after work on Tuesday. The hinge still squeaks, but the latch finally closes and the dog cannot nose it open anymore.',
-    'clear-post'
-  );
-  const cautionDom = render(
-    'Here are the key takeaways from the rollout. Moreover, the revised process gives the team a clearer handoff and a practical checklist for the next release.',
-    'caution-post'
-  );
-  const alertDom = render(
-    `As an AI language model, here are the key takeaways:
-    First, build a robust framework. First, build a robust framework. First, build a robust framework.
-    Result: robust — scalable. Outcome: clear — repeatable.
-    Moreover, the lesson is clear. In conclusion, the lesson is clear.`,
-    'alert-post'
-  );
-
-  assert.equal(clearDom.window.document.querySelector('.ai-heuristic-meter').dataset.tone, 'clear');
-  assert.equal(cautionDom.window.document.querySelector('.ai-heuristic-meter').dataset.tone, 'caution');
-  const alertMeter = alertDom.window.document.querySelector('.ai-heuristic-meter');
-  assert.equal(alertMeter.dataset.tone, 'alert');
-  assert.ok(alertMeter.querySelectorAll('[data-filled="true"]').length >= 4);
-
-  clearDom.window.close();
-  cautionDom.window.close();
-  alertDom.window.close();
 });
 
 test('a settings launcher remains when badge filters are active', () => {

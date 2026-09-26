@@ -21,18 +21,19 @@ export function loadFixture(name) {
   return fs.readFileSync(path.join(ROOT, 'tests/fixtures', name), 'utf8');
 }
 
-export function loadDom(platform, html, url) {
+export function loadDom(platform, html, url, options = {}) {
   const dom = new JSDOM(html, {
     url,
     pretendToBeVisual: true,
     runScripts: 'outside-only'
   });
+  if (options.setup) options.setup(dom.window);
   const detector = fs.readFileSync(path.join(ROOT, 'src/detector.js'), 'utf8');
   const runtime = fs.readFileSync(path.join(ROOT, 'src/runtime.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(ROOT, 'src/platforms', `${platform}.js`), 'utf8');
   const bundle = JSON.stringify(loadModels());
   dom.window.eval(`${detector}\n${runtime}\n${adapter}\nthis.__controller = startAIHeuristic(createPlatformAdapter(), ${bundle});`);
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded', { bubbles: true }));
-  dom.window.__controller.scanNow();
+  if (options.autoScan !== false) dom.window.__controller.scanNow();
   return dom;
 }

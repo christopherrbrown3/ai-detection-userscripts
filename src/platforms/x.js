@@ -10,12 +10,16 @@ function createPlatformAdapter() {
   }
 
   function tweetText(element) {
-    let best = '';
+    let best = null;
+    let quotes = 0;
     element.querySelectorAll('div[data-testid="tweetText"]').forEach((candidate) => {
       if (candidate.closest('article[role="article"]') !== element) return;
-      const text = aiHeuristicTextContent(candidate);
-      if (text.length > best.length) best = text;
+      const quote = candidate.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"], div[role="link"]');
+      if (quote && element.contains(quote)) { quotes += 1; return; }
+      if (!best) best = aiHeuristicReadContent(candidate);
     });
+    best = best || { text: '', excluded: { quotes: 0, code: 0 } };
+    best.excluded.quotes += quotes;
     return best;
   }
 
@@ -30,7 +34,7 @@ function createPlatformAdapter() {
     isTopLevel(element) {
       return !(element.parentElement && element.parentElement.closest(postSelector));
     },
-    extractText(element) {
+    extractContent(element) {
       return tweetText(element);
     },
     placeBadge(element, badge) {

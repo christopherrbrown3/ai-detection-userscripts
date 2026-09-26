@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## 0.4.0 - 2026-09-25
+
+- Preserve paragraph, line-break, and list boundaries; exclude quotations, code, and identified quoted posts. Share one sentence parser across cue checks and diagnostic features.
+- Restrict self-reference descriptors to explicit model wording, require combinations of framing phrases, and show exact highlighted excerpts for matched patterns.
+- Detect real multiword openings and contiguous phrase repetition, normalize punctuation/repetition by text length, and avoid counting list rhythm or repeated openings again as other prose cues.
+- Replace the traffic-light meter with **Style cues: N matched**, visible short-sample status, and a separate neutral **Not assessed** state for uncertain/unsupported language. Remove diagnostic sensitivity controls from ordinary settings.
+- Queue nearby posts in small batches, process affected content on mutation, cache duplicate analyses, and defer legacy diagnostics until requested.
+- Add browser regressions and a synthetic list ablation. These validate observable behavior, not authorship accuracy; no trained model or accuracy claim is introduced.
+
 ## 0.3.0 - 2026-07-16
 
 ### Accuracy and explainability

@@ -1,10 +1,46 @@
-function aiHeuristicTextContent(node) {
-  if (!node) return '';
-  const clone = node.cloneNode(true);
-  if (clone.querySelectorAll) {
-    clone.querySelectorAll('[data-ai-heuristic-ui]').forEach((element) => element.remove());
+function aiHeuristicReadContent(node) {
+  const excluded = { quotes: 0, code: 0 };
+  if (!node) return { text: '', excluded };
+  const parts = [];
+  const blocks = new Set(['DIV', 'P', 'LI', 'UL', 'OL', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+  const preserveLines = /pre|break-spaces/.test(window.getComputedStyle(node).whiteSpace);
+  function visit(current, preserve, inList = false) {
+    if (current.nodeType === 3) {
+      parts.push(preserve && !inList ? current.nodeValue : current.nodeValue.replace(/\s+/g, ' '));
+      return;
+    }
+    if (current.nodeType !== 1) return;
+    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"]')) return;
+    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
+      excluded.quotes += 1;
+      parts.push('\n');
+      return;
+    }
+    if (current.matches('pre, code')) {
+      excluded.code += 1;
+      parts.push('\n');
+      return;
+    }
+    if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
+    const block = blocks.has(current.tagName);
+    // A list item's own paragraphs stay on its marked line. Nested lists
+    // retain separate item boundaries so prose checks cannot reuse list text.
+    const boundary = inList && !['LI', 'UL', 'OL'].includes(current.tagName) ? ' ' : '\n';
+    if (block) parts.push(boundary);
+    if (current.tagName === 'LI') parts.push('- ');
+    const whiteSpace = current.style && current.style.whiteSpace;
+    const childPreserve = whiteSpace ? /pre|break-spaces/.test(whiteSpace) : preserve;
+    current.childNodes.forEach((child) => visit(child, childPreserve, inList || current.tagName === 'LI'));
+    if (block) parts.push(boundary);
   }
-  return String(clone.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  visit(node, preserveLines);
+  const text = parts.join('').replace(/\u00a0/g, ' ').replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { text, excluded };
+}
+
+function aiHeuristicTextContent(node) {
+  return aiHeuristicReadContent(node).text;
 }
 
 function startAIHeuristic(platformAdapter, modelBundle) {
@@ -22,8 +58,17 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   let settings = loadSettings();
   let records = new WeakMap();
   let activePopover = null;
-  let scanQueued = false;
   let observer = null;
+  let intersectionObserver = null;
+  let queueTimer = null;
+  let stopped = false;
+  let started = false;
+  const tracked = new Set();
+  const visible = new WeakSet();
+  const dirty = new Set();
+  const pending = new Set();
+  const analysisCache = new Map();
+  const candidateSelector = adapter.postSelector + ', ' + adapter.commentSelector;
 
   const STYLE = `
     .ai-heuristic-badge {
@@ -53,7 +98,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       text-align: left;
       transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
       vertical-align: middle;
-      white-space: nowrap;
+      white-space: normal;
+      flex-wrap: wrap;
     }
     .ai-heuristic-badge:hover {
       border-color: color-mix(in srgb, var(--aih-accent) 45%, transparent);
@@ -85,52 +131,23 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge__text { overflow: hidden; text-overflow: ellipsis; }
-    .ai-heuristic-meter {
-      --aih-meter: #64748b;
-      --aih-meter-soft: #f1f5f9;
-      align-items: center;
-      display: inline-grid;
-      gap: 2px;
-      grid-template-columns: repeat(6, 8px);
-    }
-    .ai-heuristic-meter[data-tone="clear"] { --aih-meter: #15803d; --aih-meter-soft: #dcfce7; }
-    .ai-heuristic-meter[data-tone="caution"] { --aih-meter: #ca8a04; --aih-meter-soft: #fef9c3; }
-    .ai-heuristic-meter[data-tone="alert"] { --aih-meter: #dc2626; --aih-meter-soft: #fee2e2; }
-    .ai-heuristic-meter__segment {
-      background: var(--aih-meter-soft);
-      border: 1.5px solid #cbd5e1;
-      border-radius: 2px;
-      box-sizing: border-box;
-      height: 12px;
-      width: 8px;
-    }
-    .ai-heuristic-meter[data-tone="clear"] .ai-heuristic-meter__segment {
-      border-color: var(--aih-meter);
-    }
-    .ai-heuristic-meter__segment[data-filled="true"] {
-      background: var(--aih-meter);
-      border-color: var(--aih-meter);
-    }
-    .ai-heuristic-meter--large {
-      gap: 4px;
-      grid-template-columns: repeat(6, 22px);
-    }
-    .ai-heuristic-meter--large .ai-heuristic-meter__segment {
-      border-radius: 4px;
-      height: 22px;
-      width: 22px;
-    }
-    .ai-heuristic-cue-summary {
-      align-items: center;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .ai-heuristic-cue-summary__label {
-      color: var(--aih-text);
-      font-size: 15px;
-      font-weight: 800;
+    .ai-heuristic-badge__text { overflow-wrap: anywhere; }
+    .ai-heuristic-badge__coverage { color: var(--aih-muted); font-weight: 500; }
+    .ai-heuristic-badge[data-cue-tone="neutral"],
+    .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
+    .ai-heuristic-badge[data-cue-tone="matched"],
+    .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
+    .ai-heuristic-popover__result { font-weight: 700; margin: 0 0 8px; }
+    .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
+    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0 0 18px; }
+    .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-cue-example { color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; font-size: 12px; }
+    .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
+    .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
+    .ai-heuristic-popover input { accent-color: #2563eb; }
+    .ai-heuristic-popover summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+    @media (prefers-color-scheme: dark) {
+      .ai-heuristic-cue-example mark { background: #1e3a5f; color: #eff6ff; }
     }
     .ai-heuristic-launcher {
       align-items: center;
@@ -198,14 +215,6 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       justify-content: space-between;
       padding: 15px 16px 13px;
     }
-    .ai-heuristic-popover__eyebrow {
-      color: var(--aih-muted);
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: .08em;
-      margin: 0 0 3px;
-      text-transform: uppercase;
-    }
     .ai-heuristic-popover h2 {
       color: var(--aih-text);
       font-size: 16px;
@@ -234,37 +243,9 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       outline-offset: 2px;
     }
     .ai-heuristic-popover__body { padding: 14px 16px 16px; }
-    .ai-heuristic-popover__score-row {
-      align-items: center;
-      display: flex;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-    .ai-heuristic-popover__score {
-      color: var(--aih-accent);
-      font-size: 24px;
-      font-variant-numeric: tabular-nums;
-      font-weight: 780;
-      min-width: 54px;
-    }
-    .ai-heuristic-popover__score small { color: var(--aih-muted); font-size: 11px; font-weight: 650; }
-    .ai-heuristic-popover__bar {
-      background: var(--aih-panel);
-      border-radius: 999px;
-      flex: 1;
-      height: 8px;
-      overflow: hidden;
-    }
-    .ai-heuristic-popover__bar > span {
-      background: linear-gradient(90deg, color-mix(in srgb, var(--aih-accent) 55%, white), var(--aih-accent));
-      border-radius: inherit;
-      display: block;
-      height: 100%;
-    }
     .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
     .ai-heuristic-popover__notice {
       background: color-mix(in srgb, var(--aih-accent) 7%, var(--aih-panel));
-      border-left: 3px solid var(--aih-accent);
       border-radius: 8px;
       color: var(--aih-text);
       margin: 10px 0 13px;
@@ -275,17 +256,6 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
-    .ai-heuristic-popover__segments { display: grid; gap: 7px; }
-    .ai-heuristic-popover__segment {
-      background: var(--aih-panel);
-      border-radius: 9px;
-      display: grid;
-      gap: 3px;
-      grid-template-columns: 47px 1fr;
-      padding: 8px 9px;
-    }
-    .ai-heuristic-popover__segment strong { color: var(--aih-accent); font-variant-numeric: tabular-nums; }
-    .ai-heuristic-popover__segment span { color: var(--aih-muted); font-size: 11px; }
     .ai-heuristic-popover details { margin-top: 12px; }
     .ai-heuristic-popover summary { color: var(--aih-muted); cursor: pointer; font-weight: 700; }
     .ai-heuristic-popover__technical {
@@ -297,6 +267,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       margin-top: 7px;
       padding: 9px;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .ai-heuristic-popover__settings {
       display: grid;
@@ -355,6 +326,10 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #a78bfa; }
       .ai-heuristic-badge[data-level="mixed"],
       .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #5eead4; }
+      .ai-heuristic-badge[data-cue-tone="neutral"],
+      .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #94a3b8; }
+      .ai-heuristic-badge[data-cue-tone="matched"],
+      .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #60a5fa; }
     }
     @media (prefers-reduced-motion: reduce) {
       .ai-heuristic-badge { transition: none; }
@@ -412,62 +387,27 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function cueTone(analysis) {
-    const count = analysis.cueAssessment.families.length;
-    if (count === 0) return 'clear';
-    if (count <= 3) return 'caution';
-    return 'alert';
-  }
-
-  function createCueMeter(analysis, large, accessible) {
-    const count = analysis.cueAssessment.families.length;
-    const total = analysis.cueAssessment.totalFamilies;
-    const meter = createElement(
-      'span',
-      `ai-heuristic-meter${large ? ' ai-heuristic-meter--large' : ''}`
-    );
-    meter.dataset.tone = cueTone(analysis);
-    if (accessible) {
-      meter.setAttribute('role', 'meter');
-      meter.setAttribute('aria-label', 'AI cue-family matches');
-      meter.setAttribute('aria-valuemin', '0');
-      meter.setAttribute('aria-valuemax', String(total));
-      meter.setAttribute('aria-valuenow', String(count));
-      meter.setAttribute('aria-valuetext', `${count} of ${total} cue families matched`);
-    } else {
-      meter.setAttribute('aria-hidden', 'true');
-    }
-    for (let index = 0; index < total; index += 1) {
-      const segment = createElement('span', 'ai-heuristic-meter__segment');
-      segment.dataset.filled = index < count ? 'true' : 'false';
-      meter.appendChild(segment);
-    }
-    return meter;
+    const cues = analysis.cueAssessment;
+    return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
   }
 
   function createBadge(analysis) {
     const badge = createElement('button', 'ai-heuristic-badge');
+    const cues = analysis.cueAssessment;
     badge.type = 'button';
     badge.dataset.aiHeuristicUi = '1';
     badge.dataset.aiPlatform = adapter.id;
     badge.dataset.level = analysis.label.level;
-    if (!analysis.calibrated) badge.dataset.cueTone = cueTone(analysis);
+    badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    badge.setAttribute(
-      'aria-label',
-      analysis.calibrated
-        ? `AI style analysis: ${analysis.label.text}. ${analysis.evidence.level} evidence. Open details.`
-        : `AI Score: ${analysis.cueAssessment.families.length} of ${analysis.cueAssessment.totalFamilies} cue families matched. ${analysis.cueAssessment.coverage.text}. Open details.`
-    );
-    badge.title = 'Open local style analysis';
-    if (analysis.calibrated) {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__dot'));
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__prefix', 'AI'));
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__text', analysis.label.text));
-    } else {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__prefix', 'AI Score'));
-      badge.appendChild(createCueMeter(analysis, false, false));
+    const label = cues.assessed ? 'Style cues: ' + cues.families.length + ' matched' : 'Style cues: not assessed';
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
+    if (cues.coverage.level === 'short' || !cues.assessed) {
+      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
     }
+    badge.setAttribute('aria-label', label + '. ' + cues.coverage.text + '. Open details.');
+    badge.title = 'Open local style analysis';
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -475,6 +415,18 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       else openPopover(badge, analysis);
     });
     return badge;
+  }
+
+  function appendCueExamples(parent, text, spans) {
+    for (const span of spans.slice(0, 2)) {
+      const start = Math.max(0, span.start - 35);
+      const end = Math.min(text.length, span.end + 35, span.start + 220);
+      const excerpt = createElement('p', 'ai-heuristic-cue-example');
+      excerpt.appendChild(document.createTextNode((start ? '…' : '') + text.slice(start, span.start)));
+      excerpt.appendChild(createElement('mark', '', text.slice(span.start, Math.min(span.end, end))));
+      excerpt.appendChild(document.createTextNode(text.slice(Math.min(span.end, end), end) + (end < text.length ? '…' : '')));
+      parent.appendChild(excerpt);
+    }
   }
 
   function appendList(section, items, emptyText) {
@@ -505,7 +457,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     } else {
       const cues = analysis.cueAssessment;
       lines.splice(2, 0,
-        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families; ${cues.points} weighted points`,
+        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
         `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
       );
@@ -518,26 +470,10 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     section.appendChild(createElement('h3', '', 'Settings for this site'));
     const controls = createElement('div', 'ai-heuristic-popover__settings');
 
-    if (modelBundle.metadata && modelBundle.metadata.calibrated) {
-      const sensitivityLabel = createElement('label', '', 'Sensitivity');
-      const select = document.createElement('select');
-      select.setAttribute('aria-label', 'Detector sensitivity');
-      for (const value of ['conservative', 'balanced', 'aggressive']) {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = value[0].toUpperCase() + value.slice(1);
-        option.selected = settings.sensitivity === value;
-        select.appendChild(option);
-      }
-      select.addEventListener('change', () => saveSettings({ sensitivity: select.value }));
-      sensitivityLabel.appendChild(select);
-      controls.appendChild(sensitivityLabel);
-    }
-
     const checks = [
       ['analyzeComments', 'Analyze comments and replies'],
-      ['hideInsufficient', 'Hide short or unsupported samples'],
-      ['hideLow', 'Hide posts with 0/6 cue families']
+      ['hideInsufficient', 'Hide short or unassessed samples'],
+      ['hideLow', 'Hide assessed posts with no cues']
     ];
     for (const [key, labelText] of checks) {
       const label = createElement('label', '', labelText);
@@ -553,8 +489,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function filtersAreActive() {
-    return ((modelBundle.metadata && modelBundle.metadata.calibrated) && settings.sensitivity !== defaults.sensitivity) ||
-      settings.analyzeComments !== defaults.analyzeComments ||
+    return settings.analyzeComments !== defaults.analyzeComments ||
       settings.hideInsufficient !== defaults.hideInsufficient ||
       settings.hideLow !== defaults.hideLow;
   }
@@ -567,7 +502,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       return;
     }
     if (existing) return;
-    const launcher = createElement('button', 'ai-heuristic-launcher', 'AI settings');
+    const launcher = createElement('button', 'ai-heuristic-launcher', 'Style cue settings');
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -593,8 +528,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     launcher.setAttribute('aria-expanded', 'true');
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    heading.appendChild(createElement('p', 'ai-heuristic-popover__eyebrow', `${adapter.name} · local analysis`));
-    const title = createElement('h2', '', 'AI-style signal settings');
+    const title = createElement('h2', '', 'Style cue settings');
     title.id = `${popoverId}-title`;
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -609,7 +543,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     body.appendChild(createElement(
       'p',
       'ai-heuristic-popover__summary',
-      'This button remains available while a non-default filter or sensitivity setting is active.'
+      'This button remains available while a non-default filter is active.'
     ));
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
@@ -624,7 +558,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     const popover = createElement('div', 'ai-heuristic-popover');
     popover.dataset.aiHeuristicUi = '1';
     popover.dataset.level = analysis.label.level;
-    if (!analysis.calibrated) popover.dataset.cueTone = cueTone(analysis);
+    popover.dataset.cueTone = cueTone(analysis);
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-modal', 'false');
     const popoverId = `ai-heuristic-popover-${Date.now().toString(36)}`;
@@ -634,9 +568,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    heading.appendChild(createElement('p', 'ai-heuristic-popover__eyebrow', `${adapter.name} · local analysis`));
-    const title = createElement('h2', '', analysis.calibrated ? analysis.label.text : 'AI cue analysis');
-    title.id = `${popoverId}-title`;
+    const title = createElement('h2', '', 'Style cues');
+    title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
     header.appendChild(heading);
@@ -648,92 +581,50 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     popover.appendChild(header);
 
     const body = createElement('div', 'ai-heuristic-popover__body');
-    const scoreRow = createElement('div', 'ai-heuristic-popover__score-row');
-    const canClassify = analysis.calibrated && analysis.evidence.level !== 'insufficient';
-    const cueAssessment = analysis.cueAssessment;
-    if (analysis.calibrated) {
-      const score = createElement(
-        'div',
-        'ai-heuristic-popover__score',
-        canClassify ? String(analysis.signalPercent) : '—'
-      );
-      if (canClassify) score.appendChild(createElement('small', '', '/100'));
-      scoreRow.appendChild(score);
-      const bar = createElement('div', 'ai-heuristic-popover__bar');
-      const fill = document.createElement('span');
-      fill.style.width = canClassify ? `${analysis.signalPercent}%` : '0%';
-      bar.appendChild(fill);
-      scoreRow.appendChild(bar);
+    const cues = analysis.cueAssessment;
+    body.appendChild(createElement('p', 'ai-heuristic-popover__result',
+      cues.assessed ? cues.families.length + ' matched · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+    body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+      analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
+    body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
+      'These patterns describe writing style and also occur in human writing. They do not establish authorship.'));
+
+    const cueSection = createElement('section', 'ai-heuristic-popover__section');
+    cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
+    if (!cues.assessed) {
+      cueSection.appendChild(createElement('p', 'ai-heuristic-popover__empty', 'English cue rules were not applied to this sample.'));
+    } else if (!cues.families.length) {
+      cueSection.appendChild(createElement('p', 'ai-heuristic-popover__empty', 'No configured patterns matched. This does not establish human authorship.'));
     } else {
-      scoreRow.classList.add('ai-heuristic-cue-summary');
-      scoreRow.appendChild(createElement('span', 'ai-heuristic-cue-summary__label', 'AI Score'));
-      scoreRow.appendChild(createCueMeter(analysis, true, true));
-    }
-    body.appendChild(scoreRow);
-    body.appendChild(createElement(
-      'p',
-      'ai-heuristic-popover__summary',
-      analysis.calibrated
-        ? `${analysis.evidence.level[0].toUpperCase() + analysis.evidence.level.slice(1)} evidence. The score ranks surface-style similarity; it is not an authorship probability.`
-        : `${cueAssessment.coverage.text}: ${analysis.metrics.wordCount} words and ${analysis.metrics.sentenceCount} sentences. ${cueAssessment.families.length} of ${cueAssessment.totalFamilies} configured cue families matched; this describes observable style, not authorship.`
-    ));
-
-    if (!analysis.calibrated) {
-      body.appendChild(createElement(
-        'div',
-        'ai-heuristic-popover__notice',
-        'Explainable heuristic: the badge reports the literal number of matched cue families. These patterns also occur in human writing, and AI text can avoid them, so treat the result as review guidance rather than a verdict.'
-      ));
-    }
-
-    if (analysis.calibrated) {
-      const forSection = createElement('section', 'ai-heuristic-popover__section');
-      forSection.appendChild(createElement('h3', '', 'Signals increasing the score'));
-      appendList(forSection, analysis.positiveDrivers.map((driver) => driver.name), 'No strong positive signal.');
-      body.appendChild(forSection);
-
-      const againstSection = createElement('section', 'ai-heuristic-popover__section');
-      againstSection.appendChild(createElement('h3', '', 'Signals reducing confidence or score'));
-      const against = analysis.negativeDrivers.map((driver) => driver.name).concat(analysis.counterSignals);
-      appendList(againstSection, against, 'No notable counter-signal.');
-      body.appendChild(againstSection);
-    } else {
-      const cueSection = createElement('section', 'ai-heuristic-popover__section');
-      cueSection.appendChild(createElement('h3', '', 'Cues found'));
-      appendList(
-        cueSection,
-        cueAssessment.families.map((family) => `${family.name} (${family.points} ${family.points === 1 ? 'point' : 'points'}): ${family.detail}`),
-        'No configured AI-associated style cue family was found.'
-      );
-      body.appendChild(cueSection);
-
-      const coverageSection = createElement('section', 'ai-heuristic-popover__section');
-      coverageSection.appendChild(createElement('h3', '', 'Evidence coverage'));
-      appendList(coverageSection, [
-        cueAssessment.coverage.reason,
-        `Sample classes use fixed cutoffs: short (<20 words or <2 sentences), long (≥80 words and ≥4 sentences), otherwise standard.`,
-        'Topic, facts, first-person voice, and professional polish are not treated as proof either way.'
-      ], '');
-      body.appendChild(coverageSection);
-    }
-
-    if (analysis.calibrated && analysis.segments.length) {
-      const segmentSection = createElement('section', 'ai-heuristic-popover__section');
-      segmentSection.appendChild(createElement('h3', '', 'Local style segments'));
-      const segments = createElement('div', 'ai-heuristic-popover__segments');
-      for (const segment of analysis.segments) {
-        const row = createElement('div', 'ai-heuristic-popover__segment');
-        row.appendChild(createElement('strong', '', `${Math.round(segment.signal * 100)}/100`));
-        row.appendChild(createElement('span', '', segment.excerpt));
-        segments.appendChild(row);
+      const list = createElement('ul', 'ai-heuristic-cues');
+      for (const family of cues.families) {
+        const item = document.createElement('li');
+        item.appendChild(createElement('strong', '', family.name));
+        item.appendChild(createElement('p', 'ai-heuristic-cue-detail', family.detail));
+        appendCueExamples(item, analysis.sourceText, family.spans);
+        list.appendChild(item);
       }
-      segmentSection.appendChild(segments);
-      body.appendChild(segmentSection);
+      cueSection.appendChild(list);
+    }
+    body.appendChild(cueSection);
+    if (analysis.excluded.quotes || analysis.excluded.code) {
+      body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+        'Excluded from analysis: ' + analysis.excluded.quotes + ' quotations and ' + analysis.excluded.code + ' code sections.'));
+    }
+    if (analysis.calibrated) {
+      body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+        'An experimental model is installed. Its diagnostic output is available in Technical details.'));
     }
 
     const details = document.createElement('details');
     details.appendChild(createElement('summary', '', 'Technical details'));
-    details.appendChild(createElement('div', 'ai-heuristic-popover__technical', technicalText(analysis)));
+    const technical = createElement('div', 'ai-heuristic-popover__technical');
+    details.appendChild(technical);
+    details.addEventListener('toggle', () => {
+      if (!details.open || technical.textContent) return;
+      const diagnostic = analysis.getDiagnostics ? analysis.getDiagnostics() : analysis;
+      technical.textContent = technicalText(diagnostic);
+    });
     body.appendChild(details);
     body.appendChild(createSettingsSection());
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
@@ -775,95 +666,211 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function shouldHide(analysis) {
-    return (settings.hideInsufficient && (
-      analysis.label.level === 'insufficient' ||
-      (!analysis.calibrated && ['short', 'unsupported'].includes(analysis.cueAssessment.coverage.level))
-    )) || (settings.hideLow && (analysis.label.level === 'low' || analysis.label.level === 'cue-none'));
+    const cues = analysis.cueAssessment;
+    return (settings.hideInsufficient && (cues.coverage.level === 'short' || !cues.assessed)) ||
+      (settings.hideLow && cues.assessed && !cues.families.length);
   }
 
-  function processElement(element, kind) {
-    if (!element || element.nodeType !== 1 || !adapter.isTopLevel(element, kind)) return;
-    const text = adapter.extractText(element, kind);
-    if (!text) return;
-    const fingerprint = hashText(`${kind}\n${text}`);
+  function kindFor(element) {
+    return adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+  }
+
+  function processElement(element) {
+    if (stopped || !element.isConnected) return;
+    const kind = kindFor(element);
+    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) return;
+    const content = adapter.extractContent(element, kind);
+    const { text, excluded } = content;
     const previous = records.get(element);
-    if (previous && previous.fingerprint === fingerprint && (!previous.badge || previous.badge.isConnected)) return;
-    if (previous && previous.badge) previous.badge.remove();
-    const analysis = engine.analyze(text, { kind }, settings);
+    if (!text && !excluded.quotes && !excluded.code) {
+      if (previous && previous.badge) {
+        if (activePopover && activePopover.badge === previous.badge) closePopover(false);
+        previous.badge.remove();
+      }
+      records.delete(element);
+      return;
+    }
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
+    const fingerprint = hashText(cacheKey);
+    if (previous && previous.fingerprint === fingerprint && previous.text === text &&
+      (!previous.badge || previous.badge.isConnected)) return;
+    if (previous && previous.badge) {
+      if (activePopover && activePopover.badge === previous.badge) closePopover(false);
+      previous.badge.remove();
+    }
+    let analysis = analysisCache.get(cacheKey);
+    if (!analysis) {
+      analysis = engine.analyze(text, { kind, excluded }, settings);
+      analysisCache.set(cacheKey, analysis);
+      if (analysisCache.size > 128) analysisCache.delete(analysisCache.keys().next().value);
+    }
     if (shouldHide(analysis)) {
-      records.set(element, { fingerprint, badge: null, analysis });
+      records.set(element, { fingerprint, text, badge: null, analysis });
       return;
     }
     const badge = createBadge(analysis);
-    adapter.placeBadge(element, badge, kind);
-    records.set(element, { fingerprint, badge, analysis });
+    adapter.placeBadge(element, badge, kind, content);
+    records.set(element, { fingerprint, text, badge, analysis });
   }
 
-  function scanNow() {
-    const seen = new Set();
-    document.querySelectorAll(adapter.postSelector).forEach((element) => {
-      if (seen.has(element)) return;
-      seen.add(element);
-      const kind = adapter.kindForElement ? adapter.kindForElement(element, 'post') : 'post';
-      if (kind === 'comment' && !settings.analyzeComments) return;
-      processElement(element, kind);
-    });
-    if (settings.analyzeComments) {
-      document.querySelectorAll(adapter.commentSelector).forEach((element) => {
-        if (seen.has(element)) return;
-        seen.add(element);
-        processElement(element, 'comment');
-      });
+  function flushQueue() {
+    queueTimer = null;
+    if (stopped) return;
+    const start = performance.now();
+    let count = 0;
+    for (const element of pending) {
+      pending.delete(element);
+      if (!intersectionObserver || visible.has(element)) {
+        dirty.delete(element);
+        processElement(element);
+      }
+      count += 1;
+      if (count >= 8 || performance.now() - start >= 8) break;
+    }
+    if (pending.size) scheduleQueue();
+  }
+
+  function scheduleQueue() {
+    if (stopped || queueTimer !== null) return;
+    queueTimer = window.setTimeout(flushQueue, 30);
+  }
+
+  function track(element) {
+    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) return;
+    dirty.add(element);
+    if (!tracked.has(element)) {
+      tracked.add(element);
+      if (intersectionObserver) intersectionObserver.observe(element);
+    }
+    if (!intersectionObserver || visible.has(element)) {
+      pending.add(element);
+      scheduleQueue();
     }
   }
 
-  function scheduleScan() {
-    if (scanQueued) return;
-    scanQueued = true;
-    window.setTimeout(() => {
-      scanQueued = false;
-      scanNow();
-    }, 180);
+  function discover(root) {
+    if (root.nodeType !== 1 || root.closest('[data-ai-heuristic-ui]')) return;
+    if (root.matches(candidateSelector)) track(root);
+    root.querySelectorAll(candidateSelector).forEach(track);
+  }
+
+  function isOwnUI(node) {
+    const element = node.nodeType === 1 ? node : node.parentElement;
+    return Boolean(element && element.closest('[data-ai-heuristic-ui]'));
+  }
+
+  function onMutations(mutations) {
+    if (stopped) return;
+    let removedContent = false;
+    for (const mutation of mutations) {
+      if (isOwnUI(mutation.target)) continue;
+      const changed = [...mutation.addedNodes, ...mutation.removedNodes];
+      const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+      const owner = target && target.closest(candidateSelector);
+      if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
+        const record = owner && records.get(owner);
+        if (record && record.badge && !record.badge.isConnected) track(owner);
+        continue;
+      }
+      if (owner) track(owner);
+      mutation.addedNodes.forEach((node) => discover(node));
+      if (mutation.removedNodes.length) removedContent = true;
+    }
+    if (removedContent) {
+      for (const element of tracked) {
+        if (element.isConnected) continue;
+        if (intersectionObserver) intersectionObserver.unobserve(element);
+        if (activePopover && element.contains(activePopover.badge)) closePopover(false);
+        tracked.delete(element);
+        dirty.delete(element);
+        pending.delete(element);
+      }
+    }
+  }
+
+  // Explicit synchronous scan for development/tests; live updates are targeted.
+  function scanNow() {
+    if (stopped) return;
+    document.querySelectorAll(candidateSelector).forEach((element) => {
+      track(element);
+      pending.delete(element);
+      dirty.delete(element);
+      processElement(element);
+    });
   }
 
   function resetAndRescan() {
     closePopover(false);
-    document.querySelectorAll(`.ai-heuristic-badge[data-ai-platform="${adapter.id}"]`).forEach((badge) => badge.remove());
+    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
     records = new WeakMap();
-    scheduleScan();
+    analysisCache.clear();
+    tracked.forEach(track);
+  }
+
+  function onDocumentClick(event) {
+    if (activePopover && !activePopover.node.contains(event.target) && !activePopover.badge.contains(event.target)) closePopover(false);
+  }
+
+  function onKeydown(event) {
+    if (event.key === 'Escape' && activePopover) closePopover(true);
+  }
+
+  function onViewportChange() {
+    closePopover(false);
   }
 
   function start() {
+    if (started || stopped) return;
+    started = true;
     injectStyles();
     syncSettingsLauncher();
-    scanNow();
-    observer = new MutationObserver(scheduleScan);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    document.addEventListener('click', (event) => {
-      if (activePopover && !activePopover.node.contains(event.target) && event.target !== activePopover.badge) {
-        closePopover(false);
-      }
-    }, true);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && activePopover) closePopover(true);
+    if (typeof window.IntersectionObserver === 'function') {
+      intersectionObserver = new IntersectionObserver((entries) => {
+        if (stopped) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            visible.add(entry.target);
+            if (dirty.has(entry.target)) pending.add(entry.target);
+          } else visible.delete(entry.target);
+        }
+        if (pending.size) scheduleQueue();
+      }, { rootMargin: '400px' });
+    }
+    discover(document.body);
+    observer = new MutationObserver(onMutations);
+    observer.observe(document.body, {
+      childList: true, subtree: true, characterData: true,
+      attributes: true, attributeFilter: ['lang', 'class', 'data-testid', 'slot']
     });
-    window.addEventListener('resize', () => closePopover(false), { passive: true });
+    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('keydown', onKeydown);
+    window.addEventListener('resize', onViewportChange, { passive: true });
+    window.addEventListener('scroll', onViewportChange, { passive: true });
   }
 
   function stop() {
+    stopped = true;
     if (observer) observer.disconnect();
+    if (intersectionObserver) intersectionObserver.disconnect();
+    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    document.removeEventListener('DOMContentLoaded', start);
+    document.removeEventListener('click', onDocumentClick, true);
+    document.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('resize', onViewportChange);
+    window.removeEventListener('scroll', onViewportChange);
+    tracked.clear();
+    dirty.clear();
+    pending.clear();
+    analysisCache.clear();
     closePopover(false);
-    document.querySelectorAll(`.ai-heuristic-badge[data-ai-platform="${adapter.id}"]`).forEach((badge) => badge.remove());
-    document.querySelectorAll(`.ai-heuristic-launcher[data-ai-platform="${adapter.id}"]`).forEach((button) => button.remove());
+    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"], .ai-heuristic-launcher[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
   return {
-    scanNow,
-    resetAndRescan,
-    stop,
+    scanNow, resetAndRescan, stop,
     getSettings: () => ({ ...settings }),
     getAnalysis: (element) => records.get(element) && records.get(element).analysis,
     engine

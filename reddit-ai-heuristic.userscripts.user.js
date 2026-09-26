@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         Reddit AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.3.0
+// @version      0.4.0
 // @description  Adds an experimental, privacy-preserving AI-style signal to Reddit posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -25,7 +25,7 @@
 (function () {
   'use strict';
 
-  const AI_HEURISTIC_MODELS = {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v2-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}};
+  const AI_HEURISTIC_MODELS = {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}};
 
 function createDetectorEngine(options) {
   'use strict';
@@ -34,7 +34,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'stylometry-v2';
+  const ANALYSIS_VERSION = 'browser-cues-v3';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -55,8 +55,8 @@ function createDetectorEngine(options) {
       'thrilled to', 'grateful for', 'honored to', 'humble', 'delighted to share', 'proud to'
     ],
     hedge: [
-      'as an ai', 'as a language model', 'i cannot', "i'm unable", 'i am unable',
-      "i don't have access", 'cannot provide', 'i cannot provide'
+      'as an ai', 'as a language model', 'as an artificial intelligence',
+      'i am an ai', "i'm an ai", 'i am a language model'
     ],
     transition: [
       'in conclusion', 'overall', 'to sum up', 'moreover', 'furthermore', 'additionally',
@@ -157,6 +157,77 @@ function createDetectorEngine(options) {
     return matches.map((token) => token.toLowerCase());
   }
 
+  // One deterministic parser is shared by cues, metrics and segment diagnostics.
+  // Keep UTF-16 offsets so excerpts can highlight the exact normalized source.
+  function parseText(text) {
+    const raw = normalizeText(text);
+    const excluded = [];
+    const exclusionRe = /\x60{3}[\s\S]*?(?:\x60{3}|$)|\x60[^\x60\n]+\x60|^>[^\n]*|“[^”]*”|"[^"\n]*"|‘[^’\n]+’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gmu;
+    const masked = raw.replace(exclusionRe, (value, offset) => {
+      excluded.push({ start: offset, end: offset + value.length, kind: value.charCodeAt(0) === 96 ? 'code' : 'quotes' });
+      return value.replace(/[^\n]/g, ' ');
+    });
+    const sentences = [];
+    const boundaryRe = /[.!?]+(?:[)\]]+)?(?=\s|$)|\n+/g;
+    const abbreviations = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'vs', 'etc', 'e.g', 'i.e', 'u.s', 'u.k']);
+    let start = 0;
+    function append(end) {
+      const piece = masked.slice(start, end);
+      const leading = piece.length - piece.trimStart().length;
+      const trimmed = piece.trim();
+      const tokens = tokenize(trimmed);
+      if (tokens.length) {
+        const offset = start + leading;
+        const lineStart = masked.lastIndexOf('\n', offset - 1) + 1;
+        sentences.push({
+          text: trimmed, start: offset, end: offset + trimmed.length, tokens,
+          length: tokens.length,
+          isList: /^\s*(?:[-*•]|\d+[.)])\s+/.test(masked.slice(lineStart))
+        });
+      }
+      start = end;
+    }
+    let match;
+    while ((match = boundaryRe.exec(masked))) {
+      if (match[0] === '.') {
+        const prefix = masked.slice(start, match.index);
+        const word = (prefix.match(/([A-Za-z.]+)$/) || [])[1] || '';
+        if (abbreviations.has(word.toLowerCase()) || /^[A-Z]$/.test(word) || /^\s*\d+$/.test(prefix)) continue;
+      }
+      append(match.index + match[0].length);
+    }
+    append(masked.length);
+    return { raw, masked, sentences, excluded };
+  }
+
+  function phraseSpans(parsed, phrases) {
+    const normalized = normalizeApostrophes(parsed.masked);
+    const spans = [];
+    for (const phrase of phrases) {
+      const re = new RegExp('(^|[^\\p{L}\\p{N}])(' + escapeRegExp(phrase).replace(/ /g, '[ \\t]+') + ')(?=$|[^\\p{L}\\p{N}])', 'giu');
+      let match;
+      while ((match = re.exec(normalized))) {
+        const start = match.index + match[1].length;
+        const end = start + match[2].length;
+        if (!parsed.excluded.some((span) => start < span.end && end > span.start)) {
+          spans.push({ start, end });
+        }
+      }
+    }
+    return spans.sort((a, b) => a.start - b.start || b.end - a.end)
+      .filter((span, index, all) => !all.slice(0, index).some((prior) => prior.start <= span.start && prior.end >= span.end));
+  }
+
+  function tokensWithOffsets(sentence) {
+    const spans = [];
+    const re = new RegExp(unicodeWordRe.source, 'gu');
+    let match;
+    while ((match = re.exec(sentence.text))) {
+      spans.push({ word: normalizeApostrophes(match[0]).toLowerCase(), start: sentence.start + match.index, end: sentence.start + match.index + match[0].length });
+    }
+    return spans;
+  }
+
   function mean(values) {
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   }
@@ -216,160 +287,147 @@ function createDetectorEngine(options) {
     return total;
   }
 
-  function matchedPhrases(text, phrases) {
-    const normalized = normalizeApostrophes(text).toLowerCase();
-    return phrases.filter((phrase) => {
-      const source = `(^|[^a-z0-9])${escapeRegExp(phrase)}(?=$|[^a-z0-9])`;
-      return new RegExp(source).test(normalized);
-    });
-  }
-
-  function repeatedContentBigramRatio(tokens) {
-    const content = tokens.filter((token) => token.length > 2 && !STOPWORDS.has(token));
-    if (content.length < 12) return 0;
-    const counts = new Map();
-    for (let index = 0; index < content.length - 1; index += 1) {
-      const key = `${content[index]} ${content[index + 1]}`;
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    const repeated = Array.from(counts.values()).filter((count) => count > 1)
-      .reduce((sum, count) => sum + count - 1, 0);
-    return repeated / Math.max(1, content.length - 1);
-  }
-
   function heuristicCoverage(metrics) {
     if (metrics.language.state === 'unsupported') {
-      return { level: 'unsupported', text: 'Unsupported-language sample', reason: metrics.language.reason };
+      return { level: 'unsupported', text: 'Unsupported language', reason: metrics.language.reason };
+    }
+    if (metrics.language.state === 'uncertain') {
+      return { level: 'uncertain', text: 'Language uncertain', reason: metrics.language.reason };
     }
     if (metrics.wordCount < 20 || metrics.sentenceCount < 2) {
-      return {
-        level: 'short',
-        text: 'Short sample',
-        reason: 'fewer than 20 words or 2 sentences'
-      };
+      return { level: 'short', text: 'Short sample', reason: 'Fewer than 20 words or 2 sentences; patterns may be incidental.' };
     }
-    if (metrics.wordCount >= 80 && metrics.sentenceCount >= 4 && metrics.language.state === 'supported') {
-      return {
-        level: 'long',
-        text: 'Long sample',
-        reason: 'at least 80 words and 4 sentences'
-      };
+    if (metrics.wordCount >= 80 && metrics.sentenceCount >= 4) {
+      return { level: 'long', text: 'Long sample', reason: 'At least 80 words and 4 sentences.' };
     }
-    return {
-      level: 'standard',
-      text: 'Standard sample',
-      reason: 'at least 20 words and 2 sentences, below the long-sample cutoff'
-    };
+    return { level: 'standard', text: 'Standard sample', reason: 'At least 20 words and 2 sentences.' };
   }
 
   function analyzeStyleCues(rawText, extracted) {
-    const raw = normalizeText(rawText);
-    const sentences = raw.split(/(?<=[.!?])\s+|\n+/)
-      .map((sentence) => sentence.trim())
-      .filter(Boolean);
-    const sentenceLengths = sentences.map((sentence) => tokenize(sentence).length).filter(Boolean);
-    const families = [];
-
-    const hedgeMatches = matchedPhrases(raw, PHRASES.hedge);
-    if (hedgeMatches.length) {
-      families.push({
-        id: 'self-disclosure',
-        name: 'AI self-reference',
-        points: 3,
-        detail: `Explicit wording: ${hedgeMatches.slice(0, 2).join(', ')}`
-      });
-    }
-
-    const framingMatches = [
-      ...matchedPhrases(raw, PHRASES.template),
-      ...matchedPhrases(raw, PHRASES.transition),
-      ...matchedPhrases(raw, PHRASES.rhetorical)
-    ];
-    const buzzMatches = matchedPhrases(raw, PHRASES.buzz);
-    const formulaicStrength = framingMatches.length + (buzzMatches.length >= 2 ? 1 : 0);
-    if (formulaicStrength) {
-      const examples = Array.from(new Set([...framingMatches, ...buzzMatches])).slice(0, 4);
-      families.push({
-        id: 'formulaic-framing',
-        name: 'Formulaic framing',
-        points: formulaicStrength >= 3 ? 2 : 1,
-        detail: `Stock framing or promotional phrases: ${examples.join(', ')}`
-      });
-    }
-
-    const ignoredStarters = new Set(['i', 'we', 'you', 'the', 'a', 'an', 'this', 'that', 'it']);
-    const starterCounts = new Map();
-    for (const sentence of sentences) {
-      const starter = tokenize(sentence)[0];
-      if (!starter || ignoredStarters.has(starter)) continue;
-      starterCounts.set(starter, (starterCounts.get(starter) || 0) + 1);
-    }
-    const repeatedStarters = Array.from(starterCounts.entries())
-      .filter(([, count]) => count >= 2)
-      .sort((left, right) => right[1] - left[1]);
-    let maxShortRun = 0;
-    let shortRun = 0;
-    for (const length of sentenceLengths) {
-      if (length <= 12) {
-        shortRun += 1;
-        maxShortRun = Math.max(maxShortRun, shortRun);
-      } else shortRun = 0;
-    }
-    if (repeatedStarters.length || maxShortRun >= 3) {
-      const details = [];
-      if (repeatedStarters.length) {
-        details.push(`repeated openings (${repeatedStarters.slice(0, 3).map(([word, count]) => `${word} x${count}`).join(', ')})`);
-      }
-      if (maxShortRun >= 3) details.push(`${maxShortRun} consecutive short rhetorical sentences`);
-      families.push({
-        id: 'parallel-rhythm',
-        name: 'Parallel rhetorical rhythm',
-        points: repeatedStarters.length && maxShortRun >= 3 ? 2 : 1,
-        detail: details.join('; ')
-      });
-    }
-
-    const listMarkers = raw.split('\n').filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line)).length;
-    const colonCount = (raw.match(/:/g) || []).length;
-    const emDashCount = (raw.match(/[—–]/g) || []).length;
-    if (listMarkers >= 3 || (colonCount >= 2 && emDashCount >= 1) || (emDashCount >= 3 && sentences.length >= 4)) {
-      const parts = [];
-      if (listMarkers) parts.push(`${listMarkers} list markers`);
-      if (colonCount) parts.push(`${colonCount} colons`);
-      if (emDashCount) parts.push(`${emDashCount} dash asides`);
-      families.push({
-        id: 'structured-presentation',
-        name: 'Highly structured presentation',
-        points: 1,
-        detail: parts.join(', ')
-      });
-    }
-
-    if (sentences.length >= 5 && extracted.metrics.sentenceLenCV <= 0.28) {
-      families.push({
-        id: 'sentence-uniformity',
-        name: 'Uniform sentence cadence',
-        points: 1,
-        detail: `Sentence-length variation is low across ${sentences.length} sentences`
-      });
-    }
-
-    const contentRepeat = repeatedContentBigramRatio(extracted.tokens);
-    if (extracted.metrics.wordCount >= 60 && contentRepeat >= 0.08) {
-      families.push({
-        id: 'content-repetition',
-        name: 'Repeated content phrasing',
-        points: 1,
-        detail: `${Math.round(contentRepeat * 100)}% repeated content-word pairs after stopword removal`
-      });
-    }
-
+    const parsed = extracted.parsed || parseText(rawText);
+    const raw = parsed.masked;
     const coverage = heuristicCoverage(extracted.metrics);
-    const points = families.reduce((sum, family) => sum + family.points, 0);
-    const totalFamilies = 6;
-    const level = families.length === 0 ? 'cue-none' : families.length === 1 ? 'cue-one' : 'cue-multiple';
-    const text = `${families.length}/${totalFamilies} cue families`;
-    return { level, text, points, families, totalFamilies, coverage, contentRepeat };
+    const families = [];
+    const assessed = !['unsupported', 'uncertain'].includes(coverage.level);
+    const prose = parsed.sentences.filter((sentence) => !sentence.isList);
+    const proseTokens = prose.map(tokensWithOffsets);
+    const proseWordCount = prose.reduce((sum, sentence) => sum + sentence.length, 0);
+    function add(id, name, detail, spans) {
+      families.push({ id, name, detail, spans: spans.slice(0, 8) });
+    }
+
+    if (assessed) {
+      const references = phraseSpans(parsed, PHRASES.hedge);
+      if (references.length) {
+        add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
+      }
+
+      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical]);
+      const buzz = phraseSpans(parsed, PHRASES.buzz);
+      // One everyday phrase or promotional adjective is too little to flag.
+      const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
+      const distinctBuzz = new Set(buzz.map((span) => raw.slice(span.start, span.end).toLowerCase()));
+      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2)) {
+        add('formulaic-framing', 'Stock framing phrases',
+          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.',
+          [...framing, ...buzz].sort((a, b) => a.start - b.start));
+      }
+
+      const openingGroups = new Map();
+      for (const tokens of proseTokens) {
+        if (tokens.length < 2) continue;
+        const first = tokens.slice(0, 2);
+        if (first.every((token) => STOPWORDS.has(token.word))) continue;
+        if (parsed.excluded.some((span) => first[0].start < span.end && first[1].end > span.start)) continue;
+        const key = first.map((token) => token.word).join(' ');
+        if (!openingGroups.has(key)) openingGroups.set(key, []);
+        openingGroups.get(key).push({ start: first[0].start, end: first[1].end });
+      }
+      const repeatedOpenings = Array.from(openingGroups.values())
+        .filter((spans) => spans.length >= 2 && spans.length / Math.max(1, prose.length) >= 0.3);
+      for (const spans of repeatedOpenings) {
+        const groups = spans.map((span) => proseTokens.find((tokens) => tokens[0] && tokens[0].start === span.start));
+        let sharedLength = 2;
+        while (sharedLength < 8 && groups.every((tokens) => tokens[sharedLength] &&
+          tokens[sharedLength].word === groups[0][sharedLength].word &&
+          !parsed.excluded.some((span) => tokens[0].start < span.end && tokens[sharedLength].end > span.start))) sharedLength += 1;
+        spans.forEach((span, index) => { span.end = groups[index][sharedLength - 1].end; });
+      }
+      const openingSpans = repeatedOpenings.flat();
+      if (prose.length >= 3 && openingSpans.length) {
+        add('repeated-openings', 'Repeated sentence openings',
+          openingSpans.length + ' of ' + prose.length + ' prose sentences reuse a multiword opening.', openingSpans);
+      }
+
+      const listSpans = Array.from(raw.matchAll(/^\s*(?:[-*•]|\d+[.)])\s+[^\n]+/gm), (match) => ({
+        start: match.index + match[0].length - match[0].trimStart().length,
+        end: match.index + match[0].length
+      }));
+      const punctuation = Array.from(raw.matchAll(/:(?!\/\/)|[—–]/g), (match) => ({ start: match.index, end: match.index + 1 }));
+      const colons = punctuation.filter((span) => raw[span.start] === ':').length;
+      const dashes = (raw.match(/[—–]/g) || []).length;
+      if (listSpans.length >= 3 || (extracted.metrics.wordCount >= 30 &&
+        ((colons >= 2 && dashes >= 1) || dashes >= 3) &&
+        punctuation.length * 100 / extracted.metrics.wordCount >= 4)) {
+        add('structured-presentation', 'List and punctuation structure',
+          listSpans.length + ' list items; ' + colons + ' colons; ' + dashes + ' dashes.',
+          listSpans.length >= 3 ? listSpans : punctuation);
+      }
+
+      const lengths = prose.map((sentence) => sentence.length);
+      const variation = coefficientOfVariation(lengths);
+      if (prose.length >= 5 && proseWordCount >= 40 && variation <= 0.28) {
+        add('sentence-uniformity', 'Similar sentence lengths',
+          'Prose sentence lengths: ' + lengths.slice(0, 12).join(', ') +
+          (lengths.length > 12 ? ', …' : '') + ' words. Variation: ' + variation.toFixed(2) + '. List items are excluded.',
+          prose.map(({ start, end }) => ({ start, end })));
+      }
+
+      // Actual contiguous spans, never pairs invented by deleting stopwords.
+      const patterns = new Map();
+      for (const tokens of proseTokens) {
+        for (let size = 5; size >= 3; size -= 1) {
+          for (let index = 0; index <= tokens.length - size; index += 1) {
+            const words = tokens.slice(index, index + size);
+            if (words.every((token) => STOPWORDS.has(token.word))) continue;
+            const start = words[0].start;
+            const end = words[words.length - 1].end;
+            if (parsed.excluded.some((span) => start < span.end && end > span.start)) continue;
+            if (families.some((family) => family.id === 'repeated-openings') &&
+              openingSpans.some((span) => start < span.end && end > span.start)) continue;
+            const key = words.map((token) => token.word).join(' ');
+            if (!patterns.has(key)) patterns.set(key, { size, spans: [] });
+            const candidate = patterns.get(key);
+            if (!candidate.spans.length || start >= candidate.spans[candidate.spans.length - 1].end) {
+              candidate.spans.push({ start, end });
+            }
+          }
+        }
+      }
+      const repetitions = Array.from(patterns.values()).filter((pattern) => pattern.spans.length >= 2)
+        .sort((a, b) => b.size - a.size || b.spans.length - a.spans.length);
+      const selected = [];
+      const used = [];
+      let repeatedWords = 0;
+      for (const pattern of repetitions) {
+        const available = pattern.spans.filter((span) => !used.some((prior) => span.start < prior.end && span.end > prior.start));
+        if (available.length < 2) continue;
+        selected.push(...available);
+        used.push(...available);
+        repeatedWords += (available.length - 1) * pattern.size;
+        if (selected.length >= 8) break;
+      }
+      const repetitionRate = repeatedWords / Math.max(1, proseWordCount);
+      if (proseWordCount >= 40 && repetitionRate >= 0.08) {
+        add('content-repetition', 'Repeated phrases',
+          Math.round(repetitionRate * 100) + '% of prose words repeat an earlier 3–5-word phrase. List items and counted openings are excluded.', selected);
+      }
+    }
+    const level = !assessed ? 'unassessed' : families.length === 0 ? 'cue-none' : families.length === 1 ? 'cue-one' : 'cue-multiple';
+    return {
+      level, text: assessed ? families.length + ' matched' : 'Not assessed',
+      families, totalFamilies: 6, coverage, assessed
+    };
   }
 
   function fnv1a(text) {
@@ -401,7 +459,7 @@ function createDetectorEngine(options) {
     return norm ? vector.map((value) => value / norm) : vector;
   }
 
-  function languageSupport(rawText, tokens, stopwordRatio) {
+  function languageSupport(rawText, tokens) {
     const letters = rawText.match(unicodeLetterRe) || [];
     if (!letters.length) return { state: 'unsupported', latinRatio: 0, reason: 'no letter evidence' };
     const latinLetters = (rawText.match(/[A-Za-z]/g) || []).length;
@@ -409,24 +467,38 @@ function createDetectorEngine(options) {
     if (latinRatio < 0.72) {
       return { state: 'unsupported', latinRatio, reason: 'non-Latin or mixed-script text' };
     }
-    if (tokens.length >= 20 && stopwordRatio < 0.055) {
-      return { state: 'uncertain', latinRatio, reason: 'English language could not be established' };
+    const sharedWords = new Set(['a', 'an', 'i', 'no', 'me', 'so', 'he', 'be', 'on']);
+    const englishWords = tokens.filter((token) => STOPWORDS.has(token) && !sharedWords.has(token));
+    if (new Set(englishWords).size < 2 || englishWords.length / Math.max(1, tokens.length) < 0.1) {
+      return { state: 'uncertain', latinRatio, reason: 'Too little English language evidence for these English cue rules.' };
     }
     return { state: 'supported', latinRatio, reason: '' };
   }
 
-  function extractFeatures(rawText, context) {
-    const raw = normalizeText(rawText);
+  function extractFeatures(rawText, context, options) {
+    const parsed = parseText(rawText);
+    const raw = parsed.masked;
     const cleaned = raw.replace(/\s+/g, ' ');
     const tokens = tokenize(cleaned);
     const wordCount = tokens.length;
     const charCount = cleaned.length;
 
-    const sentenceTexts = cleaned.split(/[.!?]+|\n+/).map((value) => value.trim()).filter(Boolean);
-    const sentenceLengths = sentenceTexts.map((sentence) => tokenize(sentence).length).filter(Boolean);
-    const sentenceCount = Math.max(1, sentenceLengths.length);
+    const sentenceTexts = parsed.sentences.map((sentence) => sentence.text);
+    const sentenceLengths = parsed.sentences.map((sentence) => sentence.length);
+    const sentenceCount = sentenceLengths.length;
     const avgSentenceLen = mean(sentenceLengths) || wordCount;
     const sentenceLenCV = coefficientOfVariation(sentenceLengths);
+    if (options && options.lightweight) {
+      return {
+        parsed, cleaned, tokens,
+        metrics: {
+          wordCount, charCount, sentenceCount, avgSentenceLen, sentenceLenCV,
+          typeTokenRatio: wordCount ? new Set(tokens).size / wordCount : 0,
+          language: languageSupport(raw, tokens),
+          kind: context && context.kind === 'comment' ? 'comment' : 'post'
+        }
+      };
+    }
     const shortSentenceRatio = sentenceLengths.length
       ? sentenceLengths.filter((length) => length <= 8).length / sentenceLengths.length
       : 0;
@@ -491,7 +563,7 @@ function createDetectorEngine(options) {
     }
 
     const per100 = (count) => wordCount ? count * 100 / wordCount : 0;
-    const language = languageSupport(raw, tokens, stopwordRatio);
+    const language = languageSupport(raw, tokens);
     const features = {
       typeTokenRatio: clamp(typeTokenRatio, 0, 1),
       mattr25: clamp(mattr25, 0, 1),
@@ -529,6 +601,7 @@ function createDetectorEngine(options) {
     };
 
     return {
+      parsed,
       cleaned,
       tokens,
       features,
@@ -632,7 +705,7 @@ function createDetectorEngine(options) {
   }
 
   function splitIntoSegments(text) {
-    const pieces = normalizeText(text).match(/[^.!?\n]+(?:[.!?]+|\n+|$)/g) || [];
+    const pieces = parseText(text).sentences.map((sentence) => sentence.text);
     const segments = [];
     let current = [];
     let count = 0;
@@ -688,17 +761,43 @@ function createDetectorEngine(options) {
     return { level: 'strong', text: 'Strong AI-style signal' };
   }
 
-  function analyze(rawText, context, settings) {
+  function analyze(rawText, context, settings, options) {
     const safeContext = context || { kind: 'post' };
     const safeSettings = settings || { sensitivity: 'balanced' };
-    const extracted = extractFeatures(rawText, safeContext);
-    const selected = getModel(extracted.metrics.kind);
+    const selected = getModel(safeContext.kind);
+    const calibration = selected.model && selected.model.calibration;
+    const calibrated = Boolean(calibration && Number.isFinite(calibration.slope) && Number.isFinite(calibration.intercept));
+    const lightweight = !calibrated && !(options && options.diagnostics);
+    const extracted = extractFeatures(rawText, safeContext, { lightweight });
+    const cueAssessment = analyzeStyleCues(rawText, extracted);
+    const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
+    for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
+    const shared = {
+      sourceText: extracted.parsed.raw, excluded,
+      context: safeContext, cueAssessment, metrics: extracted.metrics
+    };
+    if (lightweight) {
+      let diagnostics;
+      return {
+        ...shared, version: ANALYSIS_VERSION, platform, kind: extracted.metrics.kind,
+        modelKey: selected.key, calibrated: false,
+        label: { level: cueAssessment.level, text: cueAssessment.text },
+        signal: null, signalPercent: null, segments: [], mixed: false,
+        evidence: computeEvidence(extracted.metrics),
+        getDiagnostics() {
+          if (!diagnostics) diagnostics = analyze(rawText, safeContext, safeSettings, { diagnostics: true });
+          return diagnostics;
+        },
+        disclaimer: 'Style patterns do not establish authorship.'
+      };
+    }
     const scored = scoreExtracted(extracted, selected.model);
     const evidence = computeEvidence(extracted.metrics);
     const thresholds = sensitivityThresholds(selected.model, safeSettings.sensitivity || 'balanced');
-    const segmentAnalysis = analyzeSegments(rawText, safeContext, selected.model, thresholds);
-    const cueAssessment = analyzeStyleCues(rawText, extracted);
-    const label = labelAnalysis(
+    const segmentAnalysis = options && options.diagnostics && scored.calibrated
+      ? analyzeSegments(extracted.parsed.masked, safeContext, selected.model, thresholds)
+      : { mixed: false, segments: [] };
+    const label = !cueAssessment.assessed ? { level: 'unassessed', text: 'Not assessed' } : labelAnalysis(
       scored.signal,
       evidence,
       segmentAnalysis.mixed,
@@ -718,6 +817,7 @@ function createDetectorEngine(options) {
     counterSignals.push(...evidence.reasons);
 
     return {
+      ...shared,
       version: ANALYSIS_VERSION,
       platform,
       kind: extracted.metrics.kind,
@@ -757,18 +857,55 @@ function createDetectorEngine(options) {
     extractFeatures,
     hashedCharacterNgrams,
     countPhraseHits,
+    parseText,
     analyzeStyleCues,
     scoreExtracted
   };
 }
 
-function aiHeuristicTextContent(node) {
-  if (!node) return '';
-  const clone = node.cloneNode(true);
-  if (clone.querySelectorAll) {
-    clone.querySelectorAll('[data-ai-heuristic-ui]').forEach((element) => element.remove());
+function aiHeuristicReadContent(node) {
+  const excluded = { quotes: 0, code: 0 };
+  if (!node) return { text: '', excluded };
+  const parts = [];
+  const blocks = new Set(['DIV', 'P', 'LI', 'UL', 'OL', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+  const preserveLines = /pre|break-spaces/.test(window.getComputedStyle(node).whiteSpace);
+  function visit(current, preserve, inList = false) {
+    if (current.nodeType === 3) {
+      parts.push(preserve && !inList ? current.nodeValue : current.nodeValue.replace(/\s+/g, ' '));
+      return;
+    }
+    if (current.nodeType !== 1) return;
+    if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"]')) return;
+    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
+      excluded.quotes += 1;
+      parts.push('\n');
+      return;
+    }
+    if (current.matches('pre, code')) {
+      excluded.code += 1;
+      parts.push('\n');
+      return;
+    }
+    if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
+    const block = blocks.has(current.tagName);
+    // A list item's own paragraphs stay on its marked line. Nested lists
+    // retain separate item boundaries so prose checks cannot reuse list text.
+    const boundary = inList && !['LI', 'UL', 'OL'].includes(current.tagName) ? ' ' : '\n';
+    if (block) parts.push(boundary);
+    if (current.tagName === 'LI') parts.push('- ');
+    const whiteSpace = current.style && current.style.whiteSpace;
+    const childPreserve = whiteSpace ? /pre|break-spaces/.test(whiteSpace) : preserve;
+    current.childNodes.forEach((child) => visit(child, childPreserve, inList || current.tagName === 'LI'));
+    if (block) parts.push(boundary);
   }
-  return String(clone.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  visit(node, preserveLines);
+  const text = parts.join('').replace(/\u00a0/g, ' ').replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { text, excluded };
+}
+
+function aiHeuristicTextContent(node) {
+  return aiHeuristicReadContent(node).text;
 }
 
 function startAIHeuristic(platformAdapter, modelBundle) {
@@ -786,8 +923,17 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   let settings = loadSettings();
   let records = new WeakMap();
   let activePopover = null;
-  let scanQueued = false;
   let observer = null;
+  let intersectionObserver = null;
+  let queueTimer = null;
+  let stopped = false;
+  let started = false;
+  const tracked = new Set();
+  const visible = new WeakSet();
+  const dirty = new Set();
+  const pending = new Set();
+  const analysisCache = new Map();
+  const candidateSelector = adapter.postSelector + ', ' + adapter.commentSelector;
 
   const STYLE = `
     .ai-heuristic-badge {
@@ -817,7 +963,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       text-align: left;
       transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
       vertical-align: middle;
-      white-space: nowrap;
+      white-space: normal;
+      flex-wrap: wrap;
     }
     .ai-heuristic-badge:hover {
       border-color: color-mix(in srgb, var(--aih-accent) 45%, transparent);
@@ -849,52 +996,23 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge__text { overflow: hidden; text-overflow: ellipsis; }
-    .ai-heuristic-meter {
-      --aih-meter: #64748b;
-      --aih-meter-soft: #f1f5f9;
-      align-items: center;
-      display: inline-grid;
-      gap: 2px;
-      grid-template-columns: repeat(6, 8px);
-    }
-    .ai-heuristic-meter[data-tone="clear"] { --aih-meter: #15803d; --aih-meter-soft: #dcfce7; }
-    .ai-heuristic-meter[data-tone="caution"] { --aih-meter: #ca8a04; --aih-meter-soft: #fef9c3; }
-    .ai-heuristic-meter[data-tone="alert"] { --aih-meter: #dc2626; --aih-meter-soft: #fee2e2; }
-    .ai-heuristic-meter__segment {
-      background: var(--aih-meter-soft);
-      border: 1.5px solid #cbd5e1;
-      border-radius: 2px;
-      box-sizing: border-box;
-      height: 12px;
-      width: 8px;
-    }
-    .ai-heuristic-meter[data-tone="clear"] .ai-heuristic-meter__segment {
-      border-color: var(--aih-meter);
-    }
-    .ai-heuristic-meter__segment[data-filled="true"] {
-      background: var(--aih-meter);
-      border-color: var(--aih-meter);
-    }
-    .ai-heuristic-meter--large {
-      gap: 4px;
-      grid-template-columns: repeat(6, 22px);
-    }
-    .ai-heuristic-meter--large .ai-heuristic-meter__segment {
-      border-radius: 4px;
-      height: 22px;
-      width: 22px;
-    }
-    .ai-heuristic-cue-summary {
-      align-items: center;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .ai-heuristic-cue-summary__label {
-      color: var(--aih-text);
-      font-size: 15px;
-      font-weight: 800;
+    .ai-heuristic-badge__text { overflow-wrap: anywhere; }
+    .ai-heuristic-badge__coverage { color: var(--aih-muted); font-weight: 500; }
+    .ai-heuristic-badge[data-cue-tone="neutral"],
+    .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
+    .ai-heuristic-badge[data-cue-tone="matched"],
+    .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
+    .ai-heuristic-popover__result { font-weight: 700; margin: 0 0 8px; }
+    .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
+    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0 0 18px; }
+    .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-cue-example { color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; font-size: 12px; }
+    .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
+    .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
+    .ai-heuristic-popover input { accent-color: #2563eb; }
+    .ai-heuristic-popover summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+    @media (prefers-color-scheme: dark) {
+      .ai-heuristic-cue-example mark { background: #1e3a5f; color: #eff6ff; }
     }
     .ai-heuristic-launcher {
       align-items: center;
@@ -962,14 +1080,6 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       justify-content: space-between;
       padding: 15px 16px 13px;
     }
-    .ai-heuristic-popover__eyebrow {
-      color: var(--aih-muted);
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: .08em;
-      margin: 0 0 3px;
-      text-transform: uppercase;
-    }
     .ai-heuristic-popover h2 {
       color: var(--aih-text);
       font-size: 16px;
@@ -998,37 +1108,9 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       outline-offset: 2px;
     }
     .ai-heuristic-popover__body { padding: 14px 16px 16px; }
-    .ai-heuristic-popover__score-row {
-      align-items: center;
-      display: flex;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-    .ai-heuristic-popover__score {
-      color: var(--aih-accent);
-      font-size: 24px;
-      font-variant-numeric: tabular-nums;
-      font-weight: 780;
-      min-width: 54px;
-    }
-    .ai-heuristic-popover__score small { color: var(--aih-muted); font-size: 11px; font-weight: 650; }
-    .ai-heuristic-popover__bar {
-      background: var(--aih-panel);
-      border-radius: 999px;
-      flex: 1;
-      height: 8px;
-      overflow: hidden;
-    }
-    .ai-heuristic-popover__bar > span {
-      background: linear-gradient(90deg, color-mix(in srgb, var(--aih-accent) 55%, white), var(--aih-accent));
-      border-radius: inherit;
-      display: block;
-      height: 100%;
-    }
     .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
     .ai-heuristic-popover__notice {
       background: color-mix(in srgb, var(--aih-accent) 7%, var(--aih-panel));
-      border-left: 3px solid var(--aih-accent);
       border-radius: 8px;
       color: var(--aih-text);
       margin: 10px 0 13px;
@@ -1039,17 +1121,6 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
-    .ai-heuristic-popover__segments { display: grid; gap: 7px; }
-    .ai-heuristic-popover__segment {
-      background: var(--aih-panel);
-      border-radius: 9px;
-      display: grid;
-      gap: 3px;
-      grid-template-columns: 47px 1fr;
-      padding: 8px 9px;
-    }
-    .ai-heuristic-popover__segment strong { color: var(--aih-accent); font-variant-numeric: tabular-nums; }
-    .ai-heuristic-popover__segment span { color: var(--aih-muted); font-size: 11px; }
     .ai-heuristic-popover details { margin-top: 12px; }
     .ai-heuristic-popover summary { color: var(--aih-muted); cursor: pointer; font-weight: 700; }
     .ai-heuristic-popover__technical {
@@ -1061,6 +1132,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       margin-top: 7px;
       padding: 9px;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .ai-heuristic-popover__settings {
       display: grid;
@@ -1119,6 +1191,10 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #a78bfa; }
       .ai-heuristic-badge[data-level="mixed"],
       .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #5eead4; }
+      .ai-heuristic-badge[data-cue-tone="neutral"],
+      .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #94a3b8; }
+      .ai-heuristic-badge[data-cue-tone="matched"],
+      .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #60a5fa; }
     }
     @media (prefers-reduced-motion: reduce) {
       .ai-heuristic-badge { transition: none; }
@@ -1176,62 +1252,27 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function cueTone(analysis) {
-    const count = analysis.cueAssessment.families.length;
-    if (count === 0) return 'clear';
-    if (count <= 3) return 'caution';
-    return 'alert';
-  }
-
-  function createCueMeter(analysis, large, accessible) {
-    const count = analysis.cueAssessment.families.length;
-    const total = analysis.cueAssessment.totalFamilies;
-    const meter = createElement(
-      'span',
-      `ai-heuristic-meter${large ? ' ai-heuristic-meter--large' : ''}`
-    );
-    meter.dataset.tone = cueTone(analysis);
-    if (accessible) {
-      meter.setAttribute('role', 'meter');
-      meter.setAttribute('aria-label', 'AI cue-family matches');
-      meter.setAttribute('aria-valuemin', '0');
-      meter.setAttribute('aria-valuemax', String(total));
-      meter.setAttribute('aria-valuenow', String(count));
-      meter.setAttribute('aria-valuetext', `${count} of ${total} cue families matched`);
-    } else {
-      meter.setAttribute('aria-hidden', 'true');
-    }
-    for (let index = 0; index < total; index += 1) {
-      const segment = createElement('span', 'ai-heuristic-meter__segment');
-      segment.dataset.filled = index < count ? 'true' : 'false';
-      meter.appendChild(segment);
-    }
-    return meter;
+    const cues = analysis.cueAssessment;
+    return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
   }
 
   function createBadge(analysis) {
     const badge = createElement('button', 'ai-heuristic-badge');
+    const cues = analysis.cueAssessment;
     badge.type = 'button';
     badge.dataset.aiHeuristicUi = '1';
     badge.dataset.aiPlatform = adapter.id;
     badge.dataset.level = analysis.label.level;
-    if (!analysis.calibrated) badge.dataset.cueTone = cueTone(analysis);
+    badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    badge.setAttribute(
-      'aria-label',
-      analysis.calibrated
-        ? `AI style analysis: ${analysis.label.text}. ${analysis.evidence.level} evidence. Open details.`
-        : `AI Score: ${analysis.cueAssessment.families.length} of ${analysis.cueAssessment.totalFamilies} cue families matched. ${analysis.cueAssessment.coverage.text}. Open details.`
-    );
-    badge.title = 'Open local style analysis';
-    if (analysis.calibrated) {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__dot'));
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__prefix', 'AI'));
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__text', analysis.label.text));
-    } else {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__prefix', 'AI Score'));
-      badge.appendChild(createCueMeter(analysis, false, false));
+    const label = cues.assessed ? 'Style cues: ' + cues.families.length + ' matched' : 'Style cues: not assessed';
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
+    if (cues.coverage.level === 'short' || !cues.assessed) {
+      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
     }
+    badge.setAttribute('aria-label', label + '. ' + cues.coverage.text + '. Open details.');
+    badge.title = 'Open local style analysis';
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1239,6 +1280,18 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       else openPopover(badge, analysis);
     });
     return badge;
+  }
+
+  function appendCueExamples(parent, text, spans) {
+    for (const span of spans.slice(0, 2)) {
+      const start = Math.max(0, span.start - 35);
+      const end = Math.min(text.length, span.end + 35, span.start + 220);
+      const excerpt = createElement('p', 'ai-heuristic-cue-example');
+      excerpt.appendChild(document.createTextNode((start ? '…' : '') + text.slice(start, span.start)));
+      excerpt.appendChild(createElement('mark', '', text.slice(span.start, Math.min(span.end, end))));
+      excerpt.appendChild(document.createTextNode(text.slice(Math.min(span.end, end), end) + (end < text.length ? '…' : '')));
+      parent.appendChild(excerpt);
+    }
   }
 
   function appendList(section, items, emptyText) {
@@ -1269,7 +1322,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     } else {
       const cues = analysis.cueAssessment;
       lines.splice(2, 0,
-        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families; ${cues.points} weighted points`,
+        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
         `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
       );
@@ -1282,26 +1335,10 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     section.appendChild(createElement('h3', '', 'Settings for this site'));
     const controls = createElement('div', 'ai-heuristic-popover__settings');
 
-    if (modelBundle.metadata && modelBundle.metadata.calibrated) {
-      const sensitivityLabel = createElement('label', '', 'Sensitivity');
-      const select = document.createElement('select');
-      select.setAttribute('aria-label', 'Detector sensitivity');
-      for (const value of ['conservative', 'balanced', 'aggressive']) {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = value[0].toUpperCase() + value.slice(1);
-        option.selected = settings.sensitivity === value;
-        select.appendChild(option);
-      }
-      select.addEventListener('change', () => saveSettings({ sensitivity: select.value }));
-      sensitivityLabel.appendChild(select);
-      controls.appendChild(sensitivityLabel);
-    }
-
     const checks = [
       ['analyzeComments', 'Analyze comments and replies'],
-      ['hideInsufficient', 'Hide short or unsupported samples'],
-      ['hideLow', 'Hide posts with 0/6 cue families']
+      ['hideInsufficient', 'Hide short or unassessed samples'],
+      ['hideLow', 'Hide assessed posts with no cues']
     ];
     for (const [key, labelText] of checks) {
       const label = createElement('label', '', labelText);
@@ -1317,8 +1354,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function filtersAreActive() {
-    return ((modelBundle.metadata && modelBundle.metadata.calibrated) && settings.sensitivity !== defaults.sensitivity) ||
-      settings.analyzeComments !== defaults.analyzeComments ||
+    return settings.analyzeComments !== defaults.analyzeComments ||
       settings.hideInsufficient !== defaults.hideInsufficient ||
       settings.hideLow !== defaults.hideLow;
   }
@@ -1331,7 +1367,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
       return;
     }
     if (existing) return;
-    const launcher = createElement('button', 'ai-heuristic-launcher', 'AI settings');
+    const launcher = createElement('button', 'ai-heuristic-launcher', 'Style cue settings');
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -1357,8 +1393,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     launcher.setAttribute('aria-expanded', 'true');
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    heading.appendChild(createElement('p', 'ai-heuristic-popover__eyebrow', `${adapter.name} · local analysis`));
-    const title = createElement('h2', '', 'AI-style signal settings');
+    const title = createElement('h2', '', 'Style cue settings');
     title.id = `${popoverId}-title`;
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -1373,7 +1408,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     body.appendChild(createElement(
       'p',
       'ai-heuristic-popover__summary',
-      'This button remains available while a non-default filter or sensitivity setting is active.'
+      'This button remains available while a non-default filter is active.'
     ));
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
@@ -1388,7 +1423,7 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     const popover = createElement('div', 'ai-heuristic-popover');
     popover.dataset.aiHeuristicUi = '1';
     popover.dataset.level = analysis.label.level;
-    if (!analysis.calibrated) popover.dataset.cueTone = cueTone(analysis);
+    popover.dataset.cueTone = cueTone(analysis);
     popover.setAttribute('role', 'dialog');
     popover.setAttribute('aria-modal', 'false');
     const popoverId = `ai-heuristic-popover-${Date.now().toString(36)}`;
@@ -1398,9 +1433,8 @@ function startAIHeuristic(platformAdapter, modelBundle) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    heading.appendChild(createElement('p', 'ai-heuristic-popover__eyebrow', `${adapter.name} · local analysis`));
-    const title = createElement('h2', '', analysis.calibrated ? analysis.label.text : 'AI cue analysis');
-    title.id = `${popoverId}-title`;
+    const title = createElement('h2', '', 'Style cues');
+    title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
     header.appendChild(heading);
@@ -1412,92 +1446,50 @@ function startAIHeuristic(platformAdapter, modelBundle) {
     popover.appendChild(header);
 
     const body = createElement('div', 'ai-heuristic-popover__body');
-    const scoreRow = createElement('div', 'ai-heuristic-popover__score-row');
-    const canClassify = analysis.calibrated && analysis.evidence.level !== 'insufficient';
-    const cueAssessment = analysis.cueAssessment;
-    if (analysis.calibrated) {
-      const score = createElement(
-        'div',
-        'ai-heuristic-popover__score',
-        canClassify ? String(analysis.signalPercent) : '—'
-      );
-      if (canClassify) score.appendChild(createElement('small', '', '/100'));
-      scoreRow.appendChild(score);
-      const bar = createElement('div', 'ai-heuristic-popover__bar');
-      const fill = document.createElement('span');
-      fill.style.width = canClassify ? `${analysis.signalPercent}%` : '0%';
-      bar.appendChild(fill);
-      scoreRow.appendChild(bar);
+    const cues = analysis.cueAssessment;
+    body.appendChild(createElement('p', 'ai-heuristic-popover__result',
+      cues.assessed ? cues.families.length + ' matched · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+    body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+      analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
+    body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
+      'These patterns describe writing style and also occur in human writing. They do not establish authorship.'));
+
+    const cueSection = createElement('section', 'ai-heuristic-popover__section');
+    cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
+    if (!cues.assessed) {
+      cueSection.appendChild(createElement('p', 'ai-heuristic-popover__empty', 'English cue rules were not applied to this sample.'));
+    } else if (!cues.families.length) {
+      cueSection.appendChild(createElement('p', 'ai-heuristic-popover__empty', 'No configured patterns matched. This does not establish human authorship.'));
     } else {
-      scoreRow.classList.add('ai-heuristic-cue-summary');
-      scoreRow.appendChild(createElement('span', 'ai-heuristic-cue-summary__label', 'AI Score'));
-      scoreRow.appendChild(createCueMeter(analysis, true, true));
-    }
-    body.appendChild(scoreRow);
-    body.appendChild(createElement(
-      'p',
-      'ai-heuristic-popover__summary',
-      analysis.calibrated
-        ? `${analysis.evidence.level[0].toUpperCase() + analysis.evidence.level.slice(1)} evidence. The score ranks surface-style similarity; it is not an authorship probability.`
-        : `${cueAssessment.coverage.text}: ${analysis.metrics.wordCount} words and ${analysis.metrics.sentenceCount} sentences. ${cueAssessment.families.length} of ${cueAssessment.totalFamilies} configured cue families matched; this describes observable style, not authorship.`
-    ));
-
-    if (!analysis.calibrated) {
-      body.appendChild(createElement(
-        'div',
-        'ai-heuristic-popover__notice',
-        'Explainable heuristic: the badge reports the literal number of matched cue families. These patterns also occur in human writing, and AI text can avoid them, so treat the result as review guidance rather than a verdict.'
-      ));
-    }
-
-    if (analysis.calibrated) {
-      const forSection = createElement('section', 'ai-heuristic-popover__section');
-      forSection.appendChild(createElement('h3', '', 'Signals increasing the score'));
-      appendList(forSection, analysis.positiveDrivers.map((driver) => driver.name), 'No strong positive signal.');
-      body.appendChild(forSection);
-
-      const againstSection = createElement('section', 'ai-heuristic-popover__section');
-      againstSection.appendChild(createElement('h3', '', 'Signals reducing confidence or score'));
-      const against = analysis.negativeDrivers.map((driver) => driver.name).concat(analysis.counterSignals);
-      appendList(againstSection, against, 'No notable counter-signal.');
-      body.appendChild(againstSection);
-    } else {
-      const cueSection = createElement('section', 'ai-heuristic-popover__section');
-      cueSection.appendChild(createElement('h3', '', 'Cues found'));
-      appendList(
-        cueSection,
-        cueAssessment.families.map((family) => `${family.name} (${family.points} ${family.points === 1 ? 'point' : 'points'}): ${family.detail}`),
-        'No configured AI-associated style cue family was found.'
-      );
-      body.appendChild(cueSection);
-
-      const coverageSection = createElement('section', 'ai-heuristic-popover__section');
-      coverageSection.appendChild(createElement('h3', '', 'Evidence coverage'));
-      appendList(coverageSection, [
-        cueAssessment.coverage.reason,
-        `Sample classes use fixed cutoffs: short (<20 words or <2 sentences), long (≥80 words and ≥4 sentences), otherwise standard.`,
-        'Topic, facts, first-person voice, and professional polish are not treated as proof either way.'
-      ], '');
-      body.appendChild(coverageSection);
-    }
-
-    if (analysis.calibrated && analysis.segments.length) {
-      const segmentSection = createElement('section', 'ai-heuristic-popover__section');
-      segmentSection.appendChild(createElement('h3', '', 'Local style segments'));
-      const segments = createElement('div', 'ai-heuristic-popover__segments');
-      for (const segment of analysis.segments) {
-        const row = createElement('div', 'ai-heuristic-popover__segment');
-        row.appendChild(createElement('strong', '', `${Math.round(segment.signal * 100)}/100`));
-        row.appendChild(createElement('span', '', segment.excerpt));
-        segments.appendChild(row);
+      const list = createElement('ul', 'ai-heuristic-cues');
+      for (const family of cues.families) {
+        const item = document.createElement('li');
+        item.appendChild(createElement('strong', '', family.name));
+        item.appendChild(createElement('p', 'ai-heuristic-cue-detail', family.detail));
+        appendCueExamples(item, analysis.sourceText, family.spans);
+        list.appendChild(item);
       }
-      segmentSection.appendChild(segments);
-      body.appendChild(segmentSection);
+      cueSection.appendChild(list);
+    }
+    body.appendChild(cueSection);
+    if (analysis.excluded.quotes || analysis.excluded.code) {
+      body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+        'Excluded from analysis: ' + analysis.excluded.quotes + ' quotations and ' + analysis.excluded.code + ' code sections.'));
+    }
+    if (analysis.calibrated) {
+      body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
+        'An experimental model is installed. Its diagnostic output is available in Technical details.'));
     }
 
     const details = document.createElement('details');
     details.appendChild(createElement('summary', '', 'Technical details'));
-    details.appendChild(createElement('div', 'ai-heuristic-popover__technical', technicalText(analysis)));
+    const technical = createElement('div', 'ai-heuristic-popover__technical');
+    details.appendChild(technical);
+    details.addEventListener('toggle', () => {
+      if (!details.open || technical.textContent) return;
+      const diagnostic = analysis.getDiagnostics ? analysis.getDiagnostics() : analysis;
+      technical.textContent = technicalText(diagnostic);
+    });
     body.appendChild(details);
     body.appendChild(createSettingsSection());
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
@@ -1539,95 +1531,211 @@ function startAIHeuristic(platformAdapter, modelBundle) {
   }
 
   function shouldHide(analysis) {
-    return (settings.hideInsufficient && (
-      analysis.label.level === 'insufficient' ||
-      (!analysis.calibrated && ['short', 'unsupported'].includes(analysis.cueAssessment.coverage.level))
-    )) || (settings.hideLow && (analysis.label.level === 'low' || analysis.label.level === 'cue-none'));
+    const cues = analysis.cueAssessment;
+    return (settings.hideInsufficient && (cues.coverage.level === 'short' || !cues.assessed)) ||
+      (settings.hideLow && cues.assessed && !cues.families.length);
   }
 
-  function processElement(element, kind) {
-    if (!element || element.nodeType !== 1 || !adapter.isTopLevel(element, kind)) return;
-    const text = adapter.extractText(element, kind);
-    if (!text) return;
-    const fingerprint = hashText(`${kind}\n${text}`);
+  function kindFor(element) {
+    return adapter.kindForElement ? adapter.kindForElement(element) : element.matches(adapter.commentSelector) ? 'comment' : 'post';
+  }
+
+  function processElement(element) {
+    if (stopped || !element.isConnected) return;
+    const kind = kindFor(element);
+    if (!adapter.isTopLevel(element, kind) || (kind === 'comment' && !settings.analyzeComments)) return;
+    const content = adapter.extractContent(element, kind);
+    const { text, excluded } = content;
     const previous = records.get(element);
-    if (previous && previous.fingerprint === fingerprint && (!previous.badge || previous.badge.isConnected)) return;
-    if (previous && previous.badge) previous.badge.remove();
-    const analysis = engine.analyze(text, { kind }, settings);
+    if (!text && !excluded.quotes && !excluded.code) {
+      if (previous && previous.badge) {
+        if (activePopover && activePopover.badge === previous.badge) closePopover(false);
+        previous.badge.remove();
+      }
+      records.delete(element);
+      return;
+    }
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
+    const fingerprint = hashText(cacheKey);
+    if (previous && previous.fingerprint === fingerprint && previous.text === text &&
+      (!previous.badge || previous.badge.isConnected)) return;
+    if (previous && previous.badge) {
+      if (activePopover && activePopover.badge === previous.badge) closePopover(false);
+      previous.badge.remove();
+    }
+    let analysis = analysisCache.get(cacheKey);
+    if (!analysis) {
+      analysis = engine.analyze(text, { kind, excluded }, settings);
+      analysisCache.set(cacheKey, analysis);
+      if (analysisCache.size > 128) analysisCache.delete(analysisCache.keys().next().value);
+    }
     if (shouldHide(analysis)) {
-      records.set(element, { fingerprint, badge: null, analysis });
+      records.set(element, { fingerprint, text, badge: null, analysis });
       return;
     }
     const badge = createBadge(analysis);
-    adapter.placeBadge(element, badge, kind);
-    records.set(element, { fingerprint, badge, analysis });
+    adapter.placeBadge(element, badge, kind, content);
+    records.set(element, { fingerprint, text, badge, analysis });
   }
 
-  function scanNow() {
-    const seen = new Set();
-    document.querySelectorAll(adapter.postSelector).forEach((element) => {
-      if (seen.has(element)) return;
-      seen.add(element);
-      const kind = adapter.kindForElement ? adapter.kindForElement(element, 'post') : 'post';
-      if (kind === 'comment' && !settings.analyzeComments) return;
-      processElement(element, kind);
-    });
-    if (settings.analyzeComments) {
-      document.querySelectorAll(adapter.commentSelector).forEach((element) => {
-        if (seen.has(element)) return;
-        seen.add(element);
-        processElement(element, 'comment');
-      });
+  function flushQueue() {
+    queueTimer = null;
+    if (stopped) return;
+    const start = performance.now();
+    let count = 0;
+    for (const element of pending) {
+      pending.delete(element);
+      if (!intersectionObserver || visible.has(element)) {
+        dirty.delete(element);
+        processElement(element);
+      }
+      count += 1;
+      if (count >= 8 || performance.now() - start >= 8) break;
+    }
+    if (pending.size) scheduleQueue();
+  }
+
+  function scheduleQueue() {
+    if (stopped || queueTimer !== null) return;
+    queueTimer = window.setTimeout(flushQueue, 30);
+  }
+
+  function track(element) {
+    if (!element.isConnected || !adapter.isTopLevel(element, kindFor(element))) return;
+    dirty.add(element);
+    if (!tracked.has(element)) {
+      tracked.add(element);
+      if (intersectionObserver) intersectionObserver.observe(element);
+    }
+    if (!intersectionObserver || visible.has(element)) {
+      pending.add(element);
+      scheduleQueue();
     }
   }
 
-  function scheduleScan() {
-    if (scanQueued) return;
-    scanQueued = true;
-    window.setTimeout(() => {
-      scanQueued = false;
-      scanNow();
-    }, 180);
+  function discover(root) {
+    if (root.nodeType !== 1 || root.closest('[data-ai-heuristic-ui]')) return;
+    if (root.matches(candidateSelector)) track(root);
+    root.querySelectorAll(candidateSelector).forEach(track);
+  }
+
+  function isOwnUI(node) {
+    const element = node.nodeType === 1 ? node : node.parentElement;
+    return Boolean(element && element.closest('[data-ai-heuristic-ui]'));
+  }
+
+  function onMutations(mutations) {
+    if (stopped) return;
+    let removedContent = false;
+    for (const mutation of mutations) {
+      if (isOwnUI(mutation.target)) continue;
+      const changed = [...mutation.addedNodes, ...mutation.removedNodes];
+      const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+      const owner = target && target.closest(candidateSelector);
+      if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
+        const record = owner && records.get(owner);
+        if (record && record.badge && !record.badge.isConnected) track(owner);
+        continue;
+      }
+      if (owner) track(owner);
+      mutation.addedNodes.forEach((node) => discover(node));
+      if (mutation.removedNodes.length) removedContent = true;
+    }
+    if (removedContent) {
+      for (const element of tracked) {
+        if (element.isConnected) continue;
+        if (intersectionObserver) intersectionObserver.unobserve(element);
+        if (activePopover && element.contains(activePopover.badge)) closePopover(false);
+        tracked.delete(element);
+        dirty.delete(element);
+        pending.delete(element);
+      }
+    }
+  }
+
+  // Explicit synchronous scan for development/tests; live updates are targeted.
+  function scanNow() {
+    if (stopped) return;
+    document.querySelectorAll(candidateSelector).forEach((element) => {
+      track(element);
+      pending.delete(element);
+      dirty.delete(element);
+      processElement(element);
+    });
   }
 
   function resetAndRescan() {
     closePopover(false);
-    document.querySelectorAll(`.ai-heuristic-badge[data-ai-platform="${adapter.id}"]`).forEach((badge) => badge.remove());
+    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
     records = new WeakMap();
-    scheduleScan();
+    analysisCache.clear();
+    tracked.forEach(track);
+  }
+
+  function onDocumentClick(event) {
+    if (activePopover && !activePopover.node.contains(event.target) && !activePopover.badge.contains(event.target)) closePopover(false);
+  }
+
+  function onKeydown(event) {
+    if (event.key === 'Escape' && activePopover) closePopover(true);
+  }
+
+  function onViewportChange() {
+    closePopover(false);
   }
 
   function start() {
+    if (started || stopped) return;
+    started = true;
     injectStyles();
     syncSettingsLauncher();
-    scanNow();
-    observer = new MutationObserver(scheduleScan);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    document.addEventListener('click', (event) => {
-      if (activePopover && !activePopover.node.contains(event.target) && event.target !== activePopover.badge) {
-        closePopover(false);
-      }
-    }, true);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && activePopover) closePopover(true);
+    if (typeof window.IntersectionObserver === 'function') {
+      intersectionObserver = new IntersectionObserver((entries) => {
+        if (stopped) return;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            visible.add(entry.target);
+            if (dirty.has(entry.target)) pending.add(entry.target);
+          } else visible.delete(entry.target);
+        }
+        if (pending.size) scheduleQueue();
+      }, { rootMargin: '400px' });
+    }
+    discover(document.body);
+    observer = new MutationObserver(onMutations);
+    observer.observe(document.body, {
+      childList: true, subtree: true, characterData: true,
+      attributes: true, attributeFilter: ['lang', 'class', 'data-testid', 'slot']
     });
-    window.addEventListener('resize', () => closePopover(false), { passive: true });
+    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('keydown', onKeydown);
+    window.addEventListener('resize', onViewportChange, { passive: true });
+    window.addEventListener('scroll', onViewportChange, { passive: true });
   }
 
   function stop() {
+    stopped = true;
     if (observer) observer.disconnect();
+    if (intersectionObserver) intersectionObserver.disconnect();
+    if (queueTimer !== null) window.clearTimeout(queueTimer);
+    document.removeEventListener('DOMContentLoaded', start);
+    document.removeEventListener('click', onDocumentClick, true);
+    document.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('resize', onViewportChange);
+    window.removeEventListener('scroll', onViewportChange);
+    tracked.clear();
+    dirty.clear();
+    pending.clear();
+    analysisCache.clear();
     closePopover(false);
-    document.querySelectorAll(`.ai-heuristic-badge[data-ai-platform="${adapter.id}"]`).forEach((badge) => badge.remove());
-    document.querySelectorAll(`.ai-heuristic-launcher[data-ai-platform="${adapter.id}"]`).forEach((button) => button.remove());
+    document.querySelectorAll('.ai-heuristic-badge[data-ai-platform="' + adapter.id + '"], .ai-heuristic-launcher[data-ai-platform="' + adapter.id + '"]').forEach((badge) => badge.remove());
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
   return {
-    scanNow,
-    resetAndRescan,
-    stop,
+    scanNow, resetAndRescan, stop,
     getSettings: () => ({ ...settings }),
     getAnalysis: (element) => records.get(element) && records.get(element).analysis,
     engine
@@ -1681,11 +1789,12 @@ function createPlatformAdapter() {
   }
 
   function bestOwnedText(root, selector, kind) {
-    let best = '';
+    let best = { text: '', excluded: { quotes: 0, code: 0 } };
     root.querySelectorAll(selector).forEach((candidate) => {
       if (!belongsTo(root, candidate, kind)) return;
-      const text = aiHeuristicTextContent(candidate);
-      if (text.length > best.length) best = text;
+      if (candidate.closest('blockquote, pre, code')) return;
+      const content = aiHeuristicReadContent(candidate);
+      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = content;
     });
     return best;
   }
@@ -1693,11 +1802,14 @@ function createPlatformAdapter() {
   function postText(element) {
     const title = bestOwnedText(element, titleSelector, 'post');
     const body = bestOwnedText(element, bodySelector, 'post');
-    if (title && body) {
-      if (body.toLowerCase().includes(title.toLowerCase()) && title.length >= 20) return body;
-      return `${title}\n${body}`;
+    if (title.text && body.text) {
+      if (body.text.toLowerCase().includes(title.text.toLowerCase()) && title.text.length >= 20) return body;
+      return {
+        text: title.text + '\n' + body.text,
+        excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
+      };
     }
-    return title || body;
+    return body.text || body.excluded.quotes || body.excluded.code ? body : title;
   }
 
   return {
@@ -1713,7 +1825,7 @@ function createPlatformAdapter() {
       if (element.matches('div[data-testid="comment"]') && element.closest('shreddit-comment')) return false;
       return true;
     },
-    extractText(element, kind) {
+    extractContent(element, kind) {
       return kind === 'comment' ? bestOwnedText(element, commentTextSelector, 'comment') : postText(element);
     },
     placeBadge(element, badge, kind) {
