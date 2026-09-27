@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><body>
+<main>
+  <div role="feed">
+    <div data-pagelet="FeedUnit_0" style="display:contents">
+      <div role="article" id="post-one">
+        <h3><a href="/example.author">Example Author</a></h3><a href="/example.author/posts/123">Yesterday</a>
+        <div data-ad-preview="message" id="post-text">
+          <div data-ad-rendering-role="story_message"><p>I repaired the garden gate after work yesterday.</p><p>The new latch closes with a gentle push, and the dog cannot open it anymore.</p><div role="button">See more</div></div>
+        </div>
+        <div role="article" aria-label="Comment by Example Reader" id="comment-one">
+          <a href="/example.reader"><span dir="auto">Example Reader</span></a>
+          <div dir="auto" id="comment-text">We used the same latch on our shed last month. It still works well after the heavy rain.</div>
+          <a href="/example.author/posts/123?comment_id=456">2h</a><button>Like</button><button>Reply</button>
+          <div role="article" aria-label="Reply by Another Reader" id="reply-one">
+            <a href="/another.reader"><span dir="auto">Another Reader</span></a>
+            <div dir="auto">I checked the hinge this morning. The screws had loosened, so I tightened them before leaving.</div>
+            <a href="/example.author/posts/123?comment_id=456&amp;reply_comment_id=789">1h</a>
+          </div>
+          <div contenteditable="true" role="textbox"><div dir="auto">Private reply draft</div></div>
+        </div>
+      </div>
+    </div>
+    <div data-pagelet="FeedUnit_1" id="shared-post">
+      <h3>Sharing Author</h3>
+      <div data-ad-comet-preview="message">Here are the key takeaways from this repair. In conclusion, we should check the latch before we replace the entire gate.</div>
+      <div role="article" id="quoted-post"><h3>Original Author</h3><div data-ad-preview="message">As an AI language model, I can provide an unrelated original post. This quoted author's text must not enter the sharing author's score.</div></div>
+      <a role="link" href="https://example.test"><div>External preview title and description</div></a>
+    </div>
+    <div data-pagelet="FeedUnit_2" id="ambiguous-post"><div data-ad-preview="message">An ambiguous first author wrote this sentence. We cannot establish ownership here.</div><div data-ad-preview="message">Another author wrote these unrelated words. The whole ambiguous card must be skipped.</div></div>
+    <div data-pagelet="FeedUnit_3" id="media-only"><h3>Media Author</h3><img alt="AI-generated image caption must not be analyzed"><button>Comment</button></div>
+    <div data-pagelet="FeedUnit_4" id="unknown-post"><div dir="auto">This is an unknown layout with enough words to look like a post. It must still be skipped without a published-text marker.</div></div>
+  </div>
+  <div role="dialog" id="post-dialog">
+    <h2>Example Author's post</h2>
+    <div data-ad-rendering-role="story_message" id="dialog-post"><p>We tested the replacement door before the shop opened.</p><blockquote>As an AI, I wrote this quoted text.</blockquote><code>privateCodeExample()</code><p>The second inspection found no loose screws or damaged hinges.</p></div>
+    <div role="article" aria-label="Comentario de Otro lector" id="dialog-comment"><a href="/reader"><span dir="auto">Otro lector</span></a><div dir="auto">I tried that repair last week. The handle now moves smoothly and the door stays closed.</div><a href="/permalink.php?story_fbid=123&amp;id=999&amp;comment_id=888">1h</a></div>
+    <div contenteditable="true" role="textbox"><div data-ad-preview="message">Private post draft must never be scored.</div></div>
+  </div>
+  <div role="dialog" id="composer-dialog"><div contenteditable="true"><div data-ad-preview="message">Another private draft.</div></div></div>
+  <div data-pagelet="CometChatTab" id="chat-dock"><div role="article" aria-label="Chat message"><div dir="auto">Private chat text</div><a href="/example/posts/123?comment_id=17">link in chat</a></div><div data-ad-preview="message">A preview inside the chat must not be scored.</div></div>
+  <div hidden id="hidden-content"><div data-ad-preview="message">Hidden content does not receive an authorship score.</div></div>
+  <div role="complementary"><div data-ad-preview="message">A private preview in a nested chat/sidebar region must be skipped.</div></div>
+</main>
+<aside role="complementary"><div data-ad-preview="message">Sidebar text must not become a post sample.</div></aside>
+</body></html>

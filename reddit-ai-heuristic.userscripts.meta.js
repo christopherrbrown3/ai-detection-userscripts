@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.5.1
+// @version      0.6.0
 // @description  Adds an experimental, privacy-preserving AI-style signal to Reddit posts and comments.
 // @author       christopherrbrown3
 // @license      MIT

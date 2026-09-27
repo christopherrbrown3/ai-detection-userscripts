@@ -1,4 +1,4 @@
-function aiHeuristicReadContent(node) {
+function aiHeuristicReadContent(node, options = {}) {
   const excluded = { quotes: 0, code: 0 };
   if (!node) return { text: '', excluded };
   const parts = [];
@@ -11,7 +11,8 @@ function aiHeuristicReadContent(node) {
     }
     if (current.nodeType !== 1) return;
     if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"], input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
-    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
+    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2') ||
+      (current !== node && options.quoteSelector && current.matches(options.quoteSelector))) {
       excluded.quotes += 1;
       parts.push('\n');
       return;
@@ -68,6 +69,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     hideLow: false
   };
   let settings = loadSettings();
+  const settingsManager = getSettingsManager();
+  const managerStorageKey = storageKey + '@' + location.origin;
+  let settingsPending = Boolean(settingsManager);
+  let settingsWrite = Promise.resolve();
+  let storageNotice = options.settingsStorage === 'manager' && !settingsManager
+    ? 'This script manager cannot save preferences outside page storage. They may reset after reloading.' : '';
   let records = new WeakMap();
   let activePopover = null;
   let observer = null;
@@ -284,7 +291,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       padding: 9px 10px;
     }
     .ai-heuristic-popover__section { border-top: 1px solid var(--aih-border); margin-top: 13px; padding-top: 12px; }
-    .ai-heuristic-popover__section h3 { font-size: 12px; margin: 0 0 7px; }
+    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 12px; margin: 0 0 7px; }
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
@@ -390,10 +397,48 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { return { ...defaults }; }
   }
 
+  function getSettingsManager() {
+    if (options.settingsStorage !== 'manager') return null;
+    try {
+      if (typeof GM !== 'undefined' && typeof GM.getValue === 'function' && typeof GM.setValue === 'function') return GM;
+    } catch (_) { /* Preserve the page-storage fallback in other managers. */ }
+    return null;
+  }
+
+  function persistManagedSettings(value) {
+    if (!settingsManager) return;
+    // Keep rapid setting changes ordered, including the initial migration.
+    const saved = { ...value };
+    settingsWrite = settingsWrite.then(() => settingsManager.setValue(managerStorageKey, saved)).then(() => {
+      storageNotice = '';
+    }).catch(() => {
+      storageNotice = 'Settings could not be saved. Changes may last only for this tab.';
+    });
+  }
+
+  async function loadManagedSettings() {
+    if (!settingsManager) return;
+    try {
+      const saved = await settingsManager.getValue(managerStorageKey, null);
+      if (stopped) return;
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) settings = normalizeSettings(saved);
+      else persistManagedSettings(settings); // Import existing origin-local preferences once.
+    } catch (_) {
+      storageNotice = 'Saved settings are unavailable. Changes may last only for this tab.';
+    } finally {
+      if (!stopped) {
+        settingsPending = false;
+        refreshState(true);
+      }
+    }
+  }
+
   function saveSettings(next) {
+    if (settingsPending || stopped) return;
     settings = normalizeSettings({ ...settings, ...next });
     try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
     catch (_) { /* Private browsing/storage denial: keep this tab's preferences. */ }
+    persistManagedSettings(settings);
     closePopover(false);
     refreshState(true);
   }
@@ -555,9 +600,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function syncSettingsLauncher() {
     const existing = document.querySelector('.ai-heuristic-launcher' + owned);
-    const label = settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
-    if (existing) { existing.textContent = label; return; }
+    const label = settingsPending ? 'Loading style cue settings…' : settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
+    if (existing) { existing.textContent = label; existing.disabled = settingsPending; return; }
     const launcher = createElement('button', 'ai-heuristic-launcher', label);
+    launcher.disabled = settingsPending;
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -868,6 +914,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return Boolean(element && element.closest('[data-ai-heuristic-ui]'));
   }
 
+  function candidateAncestors(target) {
+    const ancestors = [];
+    let element = target && target.closest(candidateSelector);
+    while (element) {
+      ancestors.push(element);
+      element = element.parentElement && element.parentElement.closest(candidateSelector);
+    }
+    return ancestors;
+  }
+
   function onMutations(mutations) {
     if (stopped || !running) return;
     if (!analysisAllowed() || location.href !== lastUrl) { refreshState(true); return; }
@@ -881,13 +937,22 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (target && tracked.has(target) && !target.matches(candidateSelector)) {
         untrack(target);
       }
-      const owner = target && target.closest(candidateSelector);
+      const owners = candidateAncestors(target);
       if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
-        const record = owner && records.get(owner);
-        if (record && record.badge && !record.badge.isConnected) track(owner);
+        for (const owner of owners) {
+          const record = records.get(owner);
+          if (!record) continue;
+          if (record.badge && !record.badge.isConnected) track(owner);
+          break;
+        }
         continue;
       }
-      if (owner) track(owner);
+      // A nested selector match may be a text marker or quoted card rejected
+      // by the adapter. Walk only its ancestors to reach the actual owner.
+      for (const owner of owners) {
+        track(owner);
+        if (tracked.has(owner)) break;
+      }
       mutation.addedNodes.forEach((node) => discover(node));
       if (mutation.removedNodes.length) removedContent = true;
     }
@@ -916,6 +981,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function appendRuntimeNotice(parent) {
     if (notice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', notice));
+    if (storageNotice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', storageNotice));
     if (!routeSupported()) parent.appendChild(createElement('p', 'ai-heuristic-popover__summary', 'Style cues are inactive on this page.'));
   }
 
@@ -940,7 +1006,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1054,6 +1120,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
+  loadManagedSettings();
 
   return {
     scanNow, resetAndRescan, stop, setNotice,

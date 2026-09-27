@@ -1,6 +1,6 @@
 # Adding a site
 
-Start with the [adapter template](../templates/platform-adapter.js) and [architecture contract](architecture.md). The executable fourth-adapter example in `tests/fixtures/example-adapter.js` and `tests/build_example.py` demonstrates registry-only integration without changing detector or dispatcher code. Its fault-injection attributes belong only to tests.
+Start with the [adapter template](../templates/platform-adapter.js) and [architecture contract](architecture.md). The executable additional-adapter example in `tests/fixtures/example-adapter.js` and `tests/build_example.py` demonstrates registry-only integration without changing detector or dispatcher code. Its fault-injection attributes belong only to tests.
 
 1. Inspect representative pages you are authorized to view. Define supported hosts, routes, layouts, and exclusions before coding. Choose a stable lowercase ID that will remain the settings/model identity.
 2. Copy the template to `src/platforms/<id>.js`. Replace synthetic selectors with verified ownership and author-text boundaries. Skip unfamiliar layouts, private-message surfaces, composers, unrelated controls, and media-only cards with no suitable text. Handle nested replies and quoted/reposted text explicitly.
@@ -12,12 +12,13 @@ Start with the [adapter template](../templates/platform-adapter.js) and [archite
 
 ## Planned integrations
 
-These sites are **not included in v0.5**. Each should ship as a separate adapter change after its fixtures and browser checks are ready.
+These sites are **not included in v0.6**. Each should ship as a separate adapter change after its fixtures and browser checks are ready. Facebook is now [experimental and opt-in](facebook-validation.md); live layout validation and stable promotion remain follow-up work.
 
 | Site | Required discovery and coverage |
 | --- | --- |
 | Bluesky | Verify web hosts/routes; feed/profile/thread/replies, quote/repost ownership, rich-text links/mentions, embedded cards, recycled items |
 | Threads | Verify production domains/redirects; feed/profile/permalink/reply layouts, quoted/reposted text, expansion, supported login states, navigation |
-| Facebook | Choose initial feed/profile/permalink/comment/overlay surfaces explicitly; separate shared posts, expansion and nested replies; exclude messaging/composers; treat Groups as additional verified scope |
+| Instagram | Written captions/comments/replies, carousel ownership, post dialogs and Reel text; exclude direct messages and audiovisual detection. [Issue #6](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/6) |
+| YouTube | Written descriptions/comments/replies and channel Posts, watch-page navigation and expansion; exclude transcripts, live chat, and audiovisual detection. [Issue #8](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/8) |
 
 Use [issue #2](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/2) as the acceptance checklist. Sequence integrations according to access to representative pages and validation readiness.

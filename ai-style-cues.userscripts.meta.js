@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.5.1
+// @version      0.6.0
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
@@ -21,8 +21,11 @@
 // @match        https://reddit.com/*
 // @match        https://old.reddit.com/*
 // @match        https://www.old.reddit.com/*
+// @match        https://www.facebook.com/*
+// @match        https://facebook.com/*
 // @run-at       document-idle
 // @inject-into  content
-// @grant        none
+// @grant        GM.getValue
+// @grant        GM.setValue
 // @noframes
 // ==/UserScript==

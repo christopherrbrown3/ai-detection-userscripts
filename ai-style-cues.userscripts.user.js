@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.5.1
+// @version      0.6.0
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
@@ -24,9 +24,12 @@
 // @match        https://reddit.com/*
 // @match        https://old.reddit.com/*
 // @match        https://www.old.reddit.com/*
+// @match        https://www.facebook.com/*
+// @match        https://facebook.com/*
 // @run-at       document-idle
 // @inject-into  content
-// @grant        none
+// @grant        GM.getValue
+// @grant        GM.setValue
 // @noframes
 // ==/UserScript==
 
@@ -870,7 +873,7 @@ function createDetectorEngine(options) {
   };
 }
 
-function aiHeuristicReadContent(node) {
+function aiHeuristicReadContent(node, options = {}) {
   const excluded = { quotes: 0, code: 0 };
   if (!node) return { text: '', excluded };
   const parts = [];
@@ -883,7 +886,8 @@ function aiHeuristicReadContent(node) {
     }
     if (current.nodeType !== 1) return;
     if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"], input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
-    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
+    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2') ||
+      (current !== node && options.quoteSelector && current.matches(options.quoteSelector))) {
       excluded.quotes += 1;
       parts.push('\n');
       return;
@@ -940,6 +944,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     hideLow: false
   };
   let settings = loadSettings();
+  const settingsManager = getSettingsManager();
+  const managerStorageKey = storageKey + '@' + location.origin;
+  let settingsPending = Boolean(settingsManager);
+  let settingsWrite = Promise.resolve();
+  let storageNotice = options.settingsStorage === 'manager' && !settingsManager
+    ? 'This script manager cannot save preferences outside page storage. They may reset after reloading.' : '';
   let records = new WeakMap();
   let activePopover = null;
   let observer = null;
@@ -1156,7 +1166,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       padding: 9px 10px;
     }
     .ai-heuristic-popover__section { border-top: 1px solid var(--aih-border); margin-top: 13px; padding-top: 12px; }
-    .ai-heuristic-popover__section h3 { font-size: 12px; margin: 0 0 7px; }
+    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 12px; margin: 0 0 7px; }
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
@@ -1262,10 +1272,48 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { return { ...defaults }; }
   }
 
+  function getSettingsManager() {
+    if (options.settingsStorage !== 'manager') return null;
+    try {
+      if (typeof GM !== 'undefined' && typeof GM.getValue === 'function' && typeof GM.setValue === 'function') return GM;
+    } catch (_) { /* Preserve the page-storage fallback in other managers. */ }
+    return null;
+  }
+
+  function persistManagedSettings(value) {
+    if (!settingsManager) return;
+    // Keep rapid setting changes ordered, including the initial migration.
+    const saved = { ...value };
+    settingsWrite = settingsWrite.then(() => settingsManager.setValue(managerStorageKey, saved)).then(() => {
+      storageNotice = '';
+    }).catch(() => {
+      storageNotice = 'Settings could not be saved. Changes may last only for this tab.';
+    });
+  }
+
+  async function loadManagedSettings() {
+    if (!settingsManager) return;
+    try {
+      const saved = await settingsManager.getValue(managerStorageKey, null);
+      if (stopped) return;
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) settings = normalizeSettings(saved);
+      else persistManagedSettings(settings); // Import existing origin-local preferences once.
+    } catch (_) {
+      storageNotice = 'Saved settings are unavailable. Changes may last only for this tab.';
+    } finally {
+      if (!stopped) {
+        settingsPending = false;
+        refreshState(true);
+      }
+    }
+  }
+
   function saveSettings(next) {
+    if (settingsPending || stopped) return;
     settings = normalizeSettings({ ...settings, ...next });
     try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
     catch (_) { /* Private browsing/storage denial: keep this tab's preferences. */ }
+    persistManagedSettings(settings);
     closePopover(false);
     refreshState(true);
   }
@@ -1427,9 +1475,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function syncSettingsLauncher() {
     const existing = document.querySelector('.ai-heuristic-launcher' + owned);
-    const label = settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
-    if (existing) { existing.textContent = label; return; }
+    const label = settingsPending ? 'Loading style cue settings…' : settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
+    if (existing) { existing.textContent = label; existing.disabled = settingsPending; return; }
     const launcher = createElement('button', 'ai-heuristic-launcher', label);
+    launcher.disabled = settingsPending;
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -1740,6 +1789,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return Boolean(element && element.closest('[data-ai-heuristic-ui]'));
   }
 
+  function candidateAncestors(target) {
+    const ancestors = [];
+    let element = target && target.closest(candidateSelector);
+    while (element) {
+      ancestors.push(element);
+      element = element.parentElement && element.parentElement.closest(candidateSelector);
+    }
+    return ancestors;
+  }
+
   function onMutations(mutations) {
     if (stopped || !running) return;
     if (!analysisAllowed() || location.href !== lastUrl) { refreshState(true); return; }
@@ -1753,13 +1812,22 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (target && tracked.has(target) && !target.matches(candidateSelector)) {
         untrack(target);
       }
-      const owner = target && target.closest(candidateSelector);
+      const owners = candidateAncestors(target);
       if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
-        const record = owner && records.get(owner);
-        if (record && record.badge && !record.badge.isConnected) track(owner);
+        for (const owner of owners) {
+          const record = records.get(owner);
+          if (!record) continue;
+          if (record.badge && !record.badge.isConnected) track(owner);
+          break;
+        }
         continue;
       }
-      if (owner) track(owner);
+      // A nested selector match may be a text marker or quoted card rejected
+      // by the adapter. Walk only its ancestors to reach the actual owner.
+      for (const owner of owners) {
+        track(owner);
+        if (tracked.has(owner)) break;
+      }
       mutation.addedNodes.forEach((node) => discover(node));
       if (mutation.removedNodes.length) removedContent = true;
     }
@@ -1788,6 +1856,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function appendRuntimeNotice(parent) {
     if (notice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', notice));
+    if (storageNotice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', storageNotice));
     if (!routeSupported()) parent.appendChild(createElement('p', 'ai-heuristic-popover__summary', 'Style cues are inactive on this page.'));
   }
 
@@ -1812,7 +1881,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1926,6 +1995,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
+  loadManagedSettings();
 
   return {
     scanNow, resetAndRescan, stop, setNotice,
@@ -1997,6 +2067,8 @@ function bootAIHeuristic(registry, factories, models, release) {
   const instance = 'aih-' + Math.random().toString(36).slice(2);
   const selector = 'meta[data-ai-style-owner="' + entry.id + '"]';
   const hint = 'Multiple script installations were found. Keep the combined script enabled and disable the older site scripts in Userscripts, then refresh.';
+  const supportNotice = entry.status === 'experimental' ? entry.name + ' support is experimental. Some posts or comments may be skipped.' : '';
+  const notice = (duplicate) => [supportNotice, duplicate ? hint : ''].filter(Boolean).join(' ');
 
   function rank(version, distribution) {
     return version.split('.').map(Number).concat(distribution === 'combined' ? 1 : 0);
@@ -2008,7 +2080,7 @@ function bootAIHeuristic(registry, factories, models, release) {
     return 0;
   }
   function ping() { marker.setAttribute('data-ai-alive', '1'); }
-  function duplicate() { if (controller) controller.setNotice(hint); }
+  function duplicate() { if (controller) controller.setNotice(notice(true)); }
   function releaseOwnership() {
     if (!marker) return;
     marker.removeEventListener('ai-style-ping', ping);
@@ -2066,8 +2138,9 @@ function bootAIHeuristic(registry, factories, models, release) {
     try {
       controller = startAIHeuristic(adapter, models, {
         instance,
-        notice: coexistence ? hint : '',
+        notice: notice(coexistence),
         enabledByDefault: entry.status !== 'experimental',
+        settingsStorage: entry.settingsStorage,
         routeSupported(current) {
           return !entry.excludedPaths.some((path) => current.pathname === path || current.pathname.startsWith(path + '/')) &&
             (!adapter.supportsUrl || adapter.supportsUrl(current));
@@ -2381,7 +2454,163 @@ function createPlatformAdapter() {
   };
 }
 return createPlatformAdapter();
+},
+"facebook": function () {
+function createPlatformAdapter() {
+  'use strict';
+
+  // Use published-text anchors, never generated classes or full-card text.
+  const messageSelector = '[data-ad-preview="message"], [data-ad-comet-preview="message"], [data-ad-rendering-role="story_message"]';
+  const articleSelector = '[role="article"]';
+  const commentSelector = '[role="article"][aria-label]';
+  const feedCardSelector = '[data-pagelet^="FeedUnit_"], [role="feed"] > div';
+  const postSelector = articleSelector + ', ' + feedCardSelector + ', ' + messageSelector;
+  const excludedContext = '[contenteditable]:not([contenteditable="false"]), [role="textbox"], form, aside, [role="complementary"], [role="navigation"], ' +
+    '[aria-hidden="true"], [hidden], [data-pagelet*="Chat"], [data-pagelet*="Messenger"], ' +
+    '[data-pagelet*="Stories"], [data-pagelet*="Reels"], [data-pagelet*="Composer"]';
+  const quoteSelector = '[role="article"]';
+  const reservedRoutes = new Set([
+    'messages', 'messenger', 'groups', 'marketplace', 'stories', 'story', 'reel', 'reels',
+    'watch', 'gaming', 'notifications', 'events', 'settings', 'privacy', 'business',
+    'ads', 'adsmanager', 'login', 'checkpoint', 'photo', 'photo.php', 'photos',
+    'video', 'video.php', 'videos', 'search', 'friends', 'memories', 'saved',
+    'recover', 'help', 'dialog', 'share', 'share.php', 'live', 'accounts', 'policies'
+  ]);
+
+  function supportsUrl(url) {
+    const parts = url.pathname.toLowerCase().split('/').filter(Boolean);
+    if (reservedRoutes.has(parts[0]) || url.searchParams.has('v')) return false;
+    if (!parts.length) return true;
+    if (parts.length === 1) {
+      if (parts[0].endsWith('.php')) return ['home.php', 'profile.php', 'permalink.php', 'story.php'].includes(parts[0]);
+      return /^[a-z0-9]+(?:\.[a-z0-9]+)*$/.test(parts[0]);
+    }
+    if (parts[0] === 'posts') return parts.length === 2;
+    if (parts[1] === 'posts') return parts.length <= 3;
+    return parts[0] === 'people' && (parts.length === 3 || (parts.length === 4 && parts[3] === 'posts'));
+  }
+
+  function commentLink(link) {
+    try {
+      const url = new URL(link.getAttribute('href'), location.href);
+      return url.protocol === 'https:' && ['www.facebook.com', 'facebook.com'].includes(url.hostname) &&
+        supportsUrl(url) && Boolean(url.searchParams.get('comment_id') || url.searchParams.get('reply_comment_id'));
+    } catch (_) { return false; }
+  }
+
+  function isComment(element) {
+    if (!element.matches(commentSelector)) return false;
+    // A post may contain comments/permalinks too; evidence must belong to this
+    // article, not a descendant reply, and it must have no owned post message.
+    if ([...element.querySelectorAll(messageSelector)].some(node => node.closest(articleSelector) === element)) return false;
+    return [...element.querySelectorAll('a[href]')].some(link =>
+      link.closest(articleSelector) === element && commentLink(link));
+  }
+
+  function allowedContext(element) {
+    if (!supportsUrl(new URL(location.href)) || element.closest(excludedContext)) return false;
+    const dialog = element.closest('[role="dialog"]');
+    // Messaging and composer overlays can appear without a URL change. An
+    // eligible post dialog must contain an explicit published-message anchor.
+    if (dialog) return Boolean(dialog.querySelector(messageSelector)) && !dialog.closest(excludedContext);
+    return Boolean(element.closest('main, [role="main"], [role="feed"]'));
+  }
+
+  function messageBodies(root) {
+    const bodies = root.matches(messageSelector) ? [root] : [...root.querySelectorAll(messageSelector)];
+    return bodies.filter(body => !body.parentElement?.closest(messageSelector));
+  }
+
+  function bodyIsOwned(element) {
+    if (!allowedContext(element) || element.closest('blockquote, q, a, [role="link"], [role="button"]')) return false;
+    const article = element.closest(articleSelector);
+    if (article && (isComment(article) || article.parentElement?.closest(articleSelector))) return false;
+    if (article) {
+      const outer = article.parentElement?.closest(feedCardSelector);
+      if (outer && messageBodies(outer).some(node =>
+        !article.contains(node) && !node.closest(articleSelector) && !node.closest('blockquote, q, a, [role="link"]'))) return false;
+    }
+    return true;
+  }
+
+  function ownerFor(body) {
+    const article = body.closest(articleSelector);
+    const card = article || body.closest(feedCardSelector);
+    // Some feed wrappers have no viewport box. The published text itself is a
+    // bounded fallback, including on standalone permalinks without an article.
+    return card && window.getComputedStyle(card).display !== 'contents' ? card : body;
+  }
+
+  function postBody(element) {
+    const bodies = messageBodies(element);
+    const owned = bodies.filter(body => ownerFor(body) === element && bodyIsOwned(body));
+    // Multiple unmarked author bodies are ambiguous. Never choose the longest
+    // one or merge commentary with an embedded original.
+    return owned.length === 1 ? owned[0] : null;
+  }
+
+  function commentBodies(element) {
+    return [...element.querySelectorAll('div[dir="auto"]')].filter(node => {
+      if (node.closest(articleSelector) !== element || node.closest(excludedContext + ', a, [role="link"], [role="button"]')) return false;
+      if (node.querySelector('h1, h2, h3, h4, time')) return false;
+      return ![...node.querySelectorAll('a[href]')].some(commentLink);
+    }).filter((node, index, all) => !all.some((parent, other) => other !== index && parent.contains(node)));
+  }
+
+  function commentIsOwned(element) {
+    if (!allowedContext(element) || !isComment(element) || element.closest('blockquote, q, a, [role="link"]')) return false;
+    let parent = element.parentElement?.closest(articleSelector);
+    while (parent) {
+      if (!isComment(parent) && parent.parentElement?.closest(articleSelector)) return false;
+      parent = parent.parentElement?.closest(articleSelector);
+    }
+    return true;
+  }
+
+  return {
+    id: 'facebook',
+    name: 'Facebook',
+    postSelector,
+    commentSelector,
+    observedAttributes: ['data-ad-preview', 'data-ad-comet-preview', 'data-ad-rendering-role', 'data-pagelet', 'aria-label', 'aria-hidden', 'hidden', 'dir', 'href', 'contenteditable'],
+    supportsUrl,
+    kindForElement(element) { return isComment(element) ? 'comment' : 'post'; },
+    isTopLevel(element, kind) {
+      return kind === 'post' ? Boolean(postBody(element)) : commentIsOwned(element);
+    },
+    extractContent(element, kind) {
+      if (kind === 'post') {
+        const body = postBody(element);
+        if (!body) return null;
+        const content = aiHeuristicReadContent(body, { quoteSelector });
+        // Count identifiable shared originals outside the author's message,
+        // without counting comments/replies or a quote's nested descendants.
+        for (const quote of element.querySelectorAll(articleSelector)) {
+          if (body.contains(quote) || !quote.querySelector(messageSelector) || isComment(quote)) continue;
+          const parent = quote.parentElement?.closest(articleSelector);
+          if (parent === (element.matches(articleSelector) ? element : null)) content.excluded.quotes += 1;
+        }
+        return { ...content, host: body };
+      }
+      const bodies = commentBodies(element);
+      if (!bodies.length) return null;
+      const excluded = { quotes: 0, code: 0 };
+      const text = bodies.map(body => {
+        const content = aiHeuristicReadContent(body, { quoteSelector });
+        excluded.quotes += content.excluded.quotes;
+        excluded.code += content.excluded.code;
+        return content.text;
+      }).filter(Boolean).join('\n');
+      return { text, excluded, host: bodies[bodies.length - 1] };
+    },
+    placeBadge(element, badge, kind, content) {
+      // Keep the badge beside the analyzed text; the shared reader excludes UI.
+      content.host.appendChild(badge);
+    }
+  };
+}
+return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.1",distribution:"combined"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.0",distribution:"combined"});
 })();

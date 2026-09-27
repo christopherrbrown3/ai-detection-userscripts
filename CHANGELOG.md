@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## 0.6.0 - 2026-09-27
+
+- Add an experimental Facebook adapter to the combined script and generate an optional Facebook-only distribution. Support explicit desktop post text markers and permalink-identified comments/replies in fixture-tested feed, profile/permalink, and post-dialog structures.
+- Add exactly `www.facebook.com` and `facebook.com` to combined metadata. Facebook starts disabled on each origin; enable it through the persistent settings launcher. Existing targeted distributions keep their previous host scopes and identities.
+- Preserve independent author ownership, shared/quoted content boundaries, sample/language states, AI Score bars, and lazy diagnostics. Skip ambiguous layouts, messaging/composers, Groups routes, Marketplace, and unsupported media surfaces. No Facebook diagnostic model or accuracy claim is introduced.
+- Follow candidate ancestors to the actual owning post after nested-marker edits and badge removal, without rescanning the page. Add an optional quote-boundary selector to the shared content reader and an experimental-support notice.
+- Keep Facebook preferences in local userscript-manager storage, scoped by platform and origin, after live testing found that page-storage preferences disappeared. Combined/Facebook bundles request only `GM.getValue` and `GM.setValue`; existing sites retain their storage behavior. Serialize writes, import surviving page preferences, and wait for saved choices before analyzing.
+- Fix details-panel heading contrast against Facebook's global dark-theme styles.
+- Add source/combined/targeted regressions and reproducible isolated-browser, coexistence, and scroll/edit workloads. Live Safari checks cover feed, profile/Page, permalink/dialog, comments/replies, expansion, settings, reload, and back navigation; see [Facebook validation and remaining gaps](docs/facebook-validation.md).
+
 ## 0.5.1 - 2026-09-26
 
 - Restore the **AI Score** badge label and six-bar meter, with a readable 0–100 heuristic score derived from the matched pattern-family count. Explain the calculation and distinguish it from authorship probability. Preserve short-sample warnings, a separate unassessed state, keyboard behavior, and high-contrast support.

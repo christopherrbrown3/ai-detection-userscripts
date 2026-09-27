@@ -52,7 +52,9 @@ for (const distribution of ['combined', 'targeted']) {
 test('every declared host dispatches exactly one matching adapter', () => {
   for (const entry of registry().sites) for (const host of entry.hosts) {
     const hostname = host.replace('*.', 'news.');
-    const {window} = loadGeneratedDom(entry.id, loadFixture(entry.id + '.html'), 'https://' + hostname + '/');
+    const {window} = loadGeneratedDom(entry.id, loadFixture(entry.id + '.html'), 'https://' + hostname + '/', {setup(w) {
+      w.localStorage.setItem('ai-heuristic:' + entry.id + ':settings:v2', JSON.stringify({enabled:true}));
+    }});
     assert.equal(window.__lastSession.getStatus(), 'active');
     assert.equal(window.document.querySelectorAll('meta[data-ai-style-owner]').length, 1);
     assert.equal(window.document.querySelector('meta[data-ai-style-owner]').dataset.aiStyleOwner, entry.id);
@@ -212,7 +214,7 @@ test('body/head replacement and recycled candidates release stale state', async 
 
 const example = execFileSync('python3', ['tests/build_example.py'], {encoding:'utf8'});
 const examplePost = (id, failure = '') => '<article class="example-post" id="' + id + '" data-failure="' + failure + '"><div class="text">' + text + '</div></article>';
-test('a fourth registered adapter runs without changing the dispatcher or detector and isolates malformed cards', async () => {
+test('an additional registered adapter runs without changing the dispatcher or detector and isolates malformed cards', async () => {
   const warnings=[];
   const {window} = loadGeneratedDom('example', examplePost('bad','extract')+examplePost('place','place')+examplePost('good'), 'https://example.test/feed', {source:example, setup(w){w.console.warn=(message)=>warnings.push(message);}});
   assert.equal(window.document.querySelectorAll('.ai-heuristic-badge').length,1);
