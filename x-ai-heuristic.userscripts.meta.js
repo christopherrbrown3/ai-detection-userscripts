@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.0
+// @version      0.6.1
 // @description  Adds an experimental, privacy-preserving AI-style signal to X/Twitter posts and replies.
 // @author       christopherrbrown3
 // @license      MIT

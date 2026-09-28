@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         Facebook AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.0
+// @version      0.6.1
 // @description  Adds opt-in, local writing-style cues to supported Facebook desktop posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -953,7 +953,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   const candidateSelector = adapter.postSelector + ', ' + adapter.commentSelector;
 
   const STYLE = `
-    .ai-heuristic-badge {
+    button.ai-heuristic-badge[data-ai-heuristic-ui] {
       --aih-accent: #4f46e5;
       --aih-accent-soft: rgba(79, 70, 229, .13);
       --aih-border: rgba(15, 23, 42, .15);
@@ -964,46 +964,57 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       background: var(--aih-bg);
       background: color-mix(in srgb, var(--aih-bg) 94%, var(--aih-accent) 6%);
       border: 1px solid var(--aih-border);
-      border-radius: 999px;
+      border-radius: 12px;
+      box-sizing: border-box;
       color: var(--aih-text);
       cursor: pointer;
       display: inline-flex;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 650;
       gap: 6px;
-      line-height: 1.2;
-      margin: 3px 6px;
-      max-width: min(310px, 70vw);
-      min-height: 25px;
-      padding: 3px 9px 3px 7px;
+      line-height: 1.35;
+      margin: 4px 0;
+      width: fit-content;
+      max-width: min(100%, 310px);
+      min-width: 0;
+      height: auto;
+      max-height: none;
+      min-height: 30px;
+      padding: 5px 8px;
+      flex: 0 1 auto;
+      align-self: flex-start;
+      appearance: none;
+      text-indent: 0;
+      text-transform: none;
+      letter-spacing: normal;
       text-align: left;
       transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
       vertical-align: middle;
       white-space: normal;
       flex-wrap: wrap;
     }
-    .ai-heuristic-badge:hover {
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:hover {
       border-color: color-mix(in srgb, var(--aih-accent) 45%, transparent);
       box-shadow: 0 3px 14px rgba(15, 23, 42, .1);
       transform: translateY(-1px);
     }
-    .ai-heuristic-badge:focus-visible {
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:focus-visible {
       outline: 3px solid color-mix(in srgb, var(--aih-accent) 35%, transparent);
       outline-offset: 2px;
     }
-    .ai-heuristic-badge[data-level="insufficient"] { --aih-accent: #64748b; }
-    .ai-heuristic-badge[data-level="uncalibrated"] { --aih-accent: #b45309; }
-    .ai-heuristic-badge[data-level="cue-none"] { --aih-accent: #64748b; }
-    .ai-heuristic-badge[data-level="cue-one"] { --aih-accent: #2563eb; }
-    .ai-heuristic-badge[data-level="cue-multiple"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-badge[data-level="low"] { --aih-accent: #475569; }
-    .ai-heuristic-badge[data-level="moderate"] { --aih-accent: #2563eb; }
-    .ai-heuristic-badge[data-level="strong"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-badge[data-level="mixed"] { --aih-accent: #0f766e; }
-    .ai-heuristic-badge[data-cue-tone="clear"] { --aih-accent: #15803d; }
-    .ai-heuristic-badge[data-cue-tone="caution"] { --aih-accent: #a16207; }
-    .ai-heuristic-badge[data-cue-tone="alert"] { --aih-accent: #b91c1c; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"] { --aih-accent: #64748b; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"] { --aih-accent: #b45309; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"] { --aih-accent: #64748b; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"] { --aih-accent: #2563eb; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"] { --aih-accent: #7c3aed; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"] { --aih-accent: #475569; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"] { --aih-accent: #2563eb; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"] { --aih-accent: #7c3aed; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"] { --aih-accent: #0f766e; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="clear"] { --aih-accent: #15803d; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="caution"] { --aih-accent: #a16207; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="alert"] { --aih-accent: #b91c1c; }
     .ai-heuristic-badge__dot {
       background: var(--aih-accent);
       border-radius: 50%;
@@ -1013,8 +1024,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge__text { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-    .ai-heuristic-badge__coverage { color: var(--aih-muted); font-weight: 500; }
+    .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .ai-heuristic-badge__coverage { min-width: 0; color: var(--aih-muted); font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
     .ai-heuristic-meter {
       align-items: center;
       display: inline-grid;
@@ -1035,9 +1046,9 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       background: var(--aih-accent);
       border-color: var(--aih-accent);
     }
-    .ai-heuristic-badge[data-cue-tone="neutral"],
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
     .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
-    .ai-heuristic-badge[data-cue-tone="matched"],
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
     .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
     .ai-heuristic-popover__result { font-weight: 700; margin: 0 0 8px; }
     .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
@@ -1196,7 +1207,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       margin: 13px 0 0;
     }
     @media (prefers-color-scheme: dark) {
-      .ai-heuristic-badge {
+      button.ai-heuristic-badge[data-ai-heuristic-ui] {
         --aih-bg: #161b26;
         --aih-text: #edf1f8;
         --aih-muted: #aab4c5;
@@ -1210,35 +1221,35 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-border: #343e50;
         box-shadow: 0 22px 65px rgba(0, 0, 0, .55);
       }
-      .ai-heuristic-badge[data-level="insufficient"],
-      .ai-heuristic-badge[data-level="uncalibrated"],
-      .ai-heuristic-badge[data-level="cue-none"],
-      .ai-heuristic-badge[data-level="low"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"],
       .ai-heuristic-popover[data-level="insufficient"],
       .ai-heuristic-popover[data-level="uncalibrated"],
       .ai-heuristic-popover[data-level="cue-none"],
       .ai-heuristic-popover[data-level="low"] { --aih-accent: #94a3b8; }
-      .ai-heuristic-badge[data-level="moderate"],
-      .ai-heuristic-badge[data-level="cue-one"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"],
       .ai-heuristic-popover[data-level="moderate"],
       .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #60a5fa; }
-      .ai-heuristic-badge[data-level="strong"],
-      .ai-heuristic-badge[data-level="cue-multiple"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"],
       .ai-heuristic-popover[data-level="strong"],
       .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #a78bfa; }
-      .ai-heuristic-badge[data-level="mixed"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"],
       .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #5eead4; }
-      .ai-heuristic-badge[data-cue-tone="neutral"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
       .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #94a3b8; }
-      .ai-heuristic-badge[data-cue-tone="matched"],
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
       .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #60a5fa; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .ai-heuristic-badge { transition: none; }
-      .ai-heuristic-badge:hover { transform: none; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui] { transition: none; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui]:hover { transform: none; }
     }
     @media (forced-colors: active) {
-      .ai-heuristic-badge, .ai-heuristic-popover { border: 1px solid ButtonText; forced-color-adjust: auto; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui], .ai-heuristic-popover { border: 1px solid ButtonText; forced-color-adjust: auto; }
       .ai-heuristic-badge__dot { background: ButtonText; box-shadow: none; }
       .ai-heuristic-meter__segment { background: Canvas; border-color: ButtonText; forced-color-adjust: none; }
       .ai-heuristic-meter__segment[data-filled="true"] { background: ButtonText; border-color: ButtonText; }
@@ -1338,13 +1349,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
   }
 
-  function cueScore(cues) {
-    return Math.round(100 * cues.families.length / cues.totalFamilies);
+  function cueCount(cues) {
+    return cues.families.length + '/' + cues.totalFamilies + ' cues';
   }
 
   function createCueMeter(cues) {
     const meter = createElement('span', 'ai-heuristic-meter');
-    // The button's accessible name already describes the score and exact count.
+    // The button's accessible name already describes the exact family count.
     meter.setAttribute('aria-hidden', 'true');
     for (let index = 0; index < cues.totalFamilies; index += 1) {
       const segment = createElement('span', 'ai-heuristic-meter__segment');
@@ -1364,21 +1375,20 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score: ' + cueScore(cues) + '/100' : 'AI Score: not assessed';
+    const label = cues.assessed ? 'AI Score: ' + cueCount(cues) : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
     if (cues.assessed) {
       badge.appendChild(createCueMeter(cues));
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', 'Heuristic'));
     }
     if (cues.coverage.level === 'short' || !cues.assessed) {
       badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
     }
     const accessibleScore = cues.assessed
-      ? 'AI Score: ' + cueScore(cues) + ' out of 100. Heuristic, not an authorship probability. ' +
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched'
+      ? 'AI Score: ' + cues.families.length + ' of ' + cues.totalFamilies +
+        ' cue families matched. Authorship probability unavailable'
       : label;
     badge.setAttribute('aria-label', accessibleScore + '. ' + cues.coverage.text + '. Open details.');
-    badge.title = 'Open local style analysis. AI Score measures style cues, not authorship probability.';
+    badge.title = 'Open matched style cues. Authorship probability is unavailable; zero cues does not mean human-written.';
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1548,16 +1558,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      cues.assessed ? cueScore(cues) + '/100 · Heuristic · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+      cues.assessed ? cueCount(cues) + ' · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Each filled bar represents one family. ' +
-        'The score is their share of the total, rounded to 0–100.'));
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Each filled bar represents one family, regardless of how often it occurs. ' +
+        'These families are not equally predictive or statistically independent.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
-      'This is not the probability that AI wrote this text. These patterns also occur in human writing and do not establish authorship.'));
+      'Authorship probability is unavailable: no validated probability model is enabled for this display. ' +
+      'These cues are not the probability that AI wrote this text. Human writing can match them; AI writing can match none. They do not establish authorship.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -2305,5 +2316,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.6.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.6.1",distribution:"targeted"});
 })();

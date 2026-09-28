@@ -128,7 +128,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
   test('short and unsupported text retain honest score states and missing-model diagnostics', async () => {
     const window = load(wrap(article('short','I agree with your point.') + article('unknown','これは日本語で書かれた文章です。別の文章もあります。')));
     const short = window.document.querySelector('#short .ai-heuristic-badge');
-    assert.match(short.textContent, /AI Score: 0\/100.*Short sample/);
+    assert.match(short.textContent, /AI Score: 0\/6 cues.*Short sample/);
     assert.equal(short.querySelectorAll('.ai-heuristic-meter__segment').length, 6);
     const unknown = window.document.querySelector('#unknown .ai-heuristic-badge');
     assert.match(unknown.textContent, /not assessed.*Unsupported language/);
