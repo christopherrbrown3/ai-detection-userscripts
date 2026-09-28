@@ -1,0 +1,310 @@
+{
+  "browser": "153.0.8010.55",
+  "network": "All navigation fulfilled with synthetic HTML; other requests aborted.",
+  "baseline": [
+    {
+      "id": "zero",
+      "text": "AI Score: 0/100Heuristic",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 280,
+      "overflow": false,
+      "childOverflow": false,
+      "bars": 6,
+      "filled": 0
+    },
+    {
+      "id": "one",
+      "text": "AI Score: 17/100Heuristic",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 280,
+      "overflow": false,
+      "childOverflow": false,
+      "bars": 6,
+      "filled": 1
+    },
+    {
+      "id": "short",
+      "text": "AI Score: 0/100HeuristicShort sample",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 140,
+      "overflow": true,
+      "childOverflow": true,
+      "bars": 6,
+      "filled": 0
+    },
+    {
+      "id": "uncertain",
+      "text": "AI Score: not assessedLanguage uncertain",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 140,
+      "overflow": true,
+      "childOverflow": true,
+      "bars": 0,
+      "filled": 0
+    },
+    {
+      "id": "unsupported",
+      "text": "AI Score: not assessedUnsupported language",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 80,
+      "overflow": true,
+      "childOverflow": true,
+      "bars": 0,
+      "filled": 0
+    },
+    {
+      "id": "flex",
+      "text": "AI Score: 0/100Heuristic",
+      "width": 250,
+      "height": 25,
+      "parentWidth": 210,
+      "overflow": true,
+      "childOverflow": false,
+      "bars": 6,
+      "filled": 0
+    }
+  ],
+  "results": [
+    {
+      "spec": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 1000,
+        "colorScheme": "light",
+        "font": 12
+      },
+      "badges": [
+        {
+          "id": "zero",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "one",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 1
+        },
+        {
+          "id": "short",
+          "text": "AI ScoreShort sample",
+          "width": 140,
+          "height": 50.375,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "uncertain",
+          "text": "AI Score: not assessedLanguage uncertain",
+          "width": 140,
+          "height": 66.5625,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "unsupported",
+          "text": "AI Score: not assessedUnsupported language",
+          "width": 80,
+          "height": 115.125,
+          "parentWidth": 80,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "flex",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 210,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        }
+      ]
+    },
+    {
+      "spec": {
+        "name": "narrow-dark",
+        "width": 390,
+        "height": 844,
+        "colorScheme": "dark",
+        "font": 12
+      },
+      "badges": [
+        {
+          "id": "zero",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "one",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 1
+        },
+        {
+          "id": "short",
+          "text": "AI ScoreShort sample",
+          "width": 140,
+          "height": 50.375,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "uncertain",
+          "text": "AI Score: not assessedLanguage uncertain",
+          "width": 140,
+          "height": 66.5625,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "unsupported",
+          "text": "AI Score: not assessedUnsupported language",
+          "width": 80,
+          "height": 115.125,
+          "parentWidth": 80,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "flex",
+          "text": "AI Score",
+          "width": 132.046875,
+          "height": 30,
+          "parentWidth": 210,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        }
+      ]
+    },
+    {
+      "spec": {
+        "name": "large-text",
+        "width": 390,
+        "height": 844,
+        "colorScheme": "light",
+        "font": 24
+      },
+      "badges": [
+        {
+          "id": "zero",
+          "text": "AI Score",
+          "width": 174.4375,
+          "height": 44.390625,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "one",
+          "text": "AI Score",
+          "width": 174.4375,
+          "height": 44.390625,
+          "parentWidth": 280,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 1
+        },
+        {
+          "id": "short",
+          "text": "AI ScoreShort sample",
+          "width": 140,
+          "height": 133.171875,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        },
+        {
+          "id": "uncertain",
+          "text": "AI Score: not assessedLanguage uncertain",
+          "width": 140,
+          "height": 179.953125,
+          "parentWidth": 140,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "unsupported",
+          "text": "AI Score: not assessedUnsupported language",
+          "width": 80,
+          "height": 341.90625,
+          "parentWidth": 80,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 0,
+          "filled": 0
+        },
+        {
+          "id": "flex",
+          "text": "AI Score",
+          "width": 174.4375,
+          "height": 44.390625,
+          "parentWidth": 210,
+          "overflow": false,
+          "childOverflow": false,
+          "bars": 6,
+          "filled": 0
+        }
+      ]
+    }
+  ],
+  "keyboard": true,
+  "forcedColors": true,
+  "reducedMotion": true,
+  "panelFits": true,
+  "errors": []
+}

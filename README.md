@@ -38,9 +38,9 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-The badge shows **AI Score: N/6 cues** and a six-bar meter. Each filled bar is one matched pattern family, regardless of how often it occurs. For example, two families give **2/6 cues** and two filled bars. **Authorship probability is unavailable**: these families are not equally predictive or statistically independent, and the project has no validated probability model for this display. Open the badge for descriptions and highlighted examples. The original post is never marked up or changed.
+The badge shows **AI Score** and a six-bar meter. Each filled bar is one matched pattern family, regardless of how often it occurs. For example, two families give two filled bars. The exact count remains in the details panel and screen-reader label. **Authorship probability is unavailable**: these families are not equally predictive or statistically independent, and the project has no validated probability model for this display. Open the badge for descriptions and highlighted examples. The original post is never marked up or changed.
 
-- **0/6 cues** means the rules ran and found no configured patterns. It does not establish human authorship. Generated text can also match none.
+- **Six empty bars** means the rules ran and found no configured patterns. It does not establish human authorship. Generated text can also match none.
 - **Short sample** appears directly on the badge for fewer than 20 words or 2 sentences/list items. Matches in these samples may be incidental.
 - **Not assessed** appears with **Language uncertain** or **Unsupported language** when there is too little evidence to apply the English rules. This is different from zero matches.
 

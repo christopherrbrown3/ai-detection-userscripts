@@ -198,7 +198,7 @@ test('badges open a keyboard-accessible dialog with settings', () => {
   const article = document.querySelector('#tweet-1');
   const badge = document.querySelector('.ai-heuristic-badge');
   const analysis = __controller.getAnalysis(article);
-  assert.match(badge.textContent, /AI Score: 0\/6 cues/);
+  assert.equal(badge.querySelector('.ai-heuristic-badge__text').textContent, 'AI Score');
   assert.doesNotMatch(badge.textContent, /\/100|%/);
   assert.match(badge.getAttribute('aria-label'), /0 of 6 cue families matched.*Authorship probability unavailable/);
   assert.match(badge.title, /zero cues does not mean human-written/);
@@ -231,7 +231,7 @@ test('AI Score and six bars agree with the cue evidence and distinguish unassess
   const cues = __controller.getAnalysis(post).cueAssessment;
   assert.equal(cues.families.length, 1);
   const badge = post.querySelector('.ai-heuristic-badge');
-  assert.match(badge.textContent, /AI Score: 1\/6 cues/);
+  assert.equal(badge.querySelector('.ai-heuristic-badge__text').textContent, 'AI Score');
   assert.match(badge.getAttribute('aria-label'), /1 of 6 cue families matched.*Authorship probability unavailable/);
   assert.equal(badge.querySelectorAll('.ai-heuristic-meter__segment').length, 6);
   assert.equal(badge.querySelectorAll('[data-filled="true"]').length, 1);

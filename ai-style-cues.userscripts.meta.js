@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.1
+// @version      0.6.2
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT

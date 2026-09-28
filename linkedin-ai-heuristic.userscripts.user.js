@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         LinkedIn AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.1
+// @version      0.6.2
 // @description  Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -1376,7 +1376,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score: ' + cueCount(cues) : 'AI Score: not assessed';
+    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
     if (cues.assessed) {
       badge.appendChild(createCueMeter(cues));
@@ -2283,5 +2283,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.1",distribution:"targeted"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.2",distribution:"targeted"});
 })();
