@@ -1,6 +1,6 @@
 # Web research notes (papers + OSS)
 
-Last reviewed: 2026-07-16.
+Last broad review: 2026-07-16. Selected primary papers and all four local PDFs audited against the implementation on 2026-09-28; see [research grounding and corrections](../docs/research-grounding.md).
 
 This file is a curated list of papers, benchmarks, and open-source repos relevant to LLM-generated text detection.
 
@@ -8,7 +8,7 @@ This file is a curated list of papers, benchmarks, and open-source repos relevan
 
 ## Local PDFs used during research (not committed)
 - `whitepapers/2024.emnlp-main.885.pdf` — **Text Fluoroscopy** (EMNLP 2024).
-  - Key takeaway: domain generalization improves when you focus on **intrinsic/stylistic** signals rather than semantic/topic cues.
+  - Key takeaway: the evaluated method selects intermediate encoder-layer representations for domain transfer. Its “intrinsic features” are learned representations, not this project's surface style rules.
   - Not directly portable: their core signal is computed by probing **internal LM layers** (not available client-side).
 - `whitepapers/2510.12608v1.pdf` — **StyleDecipher** (2025).
   - Key takeaway: framing detection as **stylistic analysis** + explainability + robustness to paraphrasing and **hybrid human/AI** writing is directionally right for social posts.
@@ -17,11 +17,11 @@ This file is a curated list of papers, benchmarks, and open-source repos relevan
   - Key takeaway: binary “AI vs human” is often the wrong UX; better is “LLM role / involvement” and explicitly handling mixed authorship.
   - Portable for us: UX taxonomy + the idea of “mixed signals” / evidence quality (even if we don’t ship their ML).
 - `whitepapers/llm_detection_report.pdf` — short state-of-the-art overview (2025-11-22).
-  - Key takeaway: popular detectors lean on **perplexity/burstiness** (LM-scoring) and stylometry; for us, burstiness-like *proxies* (sentence-length CV, repetition, list structure) are feasible.
+  - This overview identifies its author as **Manus AI**. It is secondary background, not a peer-reviewed experiment or a source for our thresholds. Sentence-length CV is not a measurement of LM perplexity or probability burstiness.
 
 ## Highly relevant to our userscripts (intrinsic / stylometry focus)
 - **Text Fluoroscopy: Detecting LLM-Generated Text through Intrinsic Features** (EMNLP 2024, ACL Anthology id `2024.emnlp-main.885`, DOI `10.18653/v1/2024.emnlp-main.885`).
-  - Takeaway for userscripts: intrinsic/stylistic signals generalize better than topic/semantic cues.
+  - Takeaway for userscripts: evaluate domain transfer explicitly. The encoder-layer method does not establish that our regexes, punctuation counts, or sentence-length cutoffs generalize.
 - **StyleDecipher: Robust and Explainable Detection of LLM-Generated Texts with Stylistic Analysis** (arXiv `2510.12608`, 2025-10-14; code: `SiyuanLi00/StyleDecipher`).
   - Takeaway for userscripts: stylistic indicators + explainability + mixed human/AI framing.
 - **GLTR: Statistical Detection and Visualization of Generated Text** (ACL 2019 demo track, ACL Anthology id `P19-3019`; repo: `HendrikStrobelt/detecting-fake-text`).
@@ -66,7 +66,7 @@ This file is a curated list of papers, benchmarks, and open-source repos relevan
   - Caveat: the study primarily used 300–500-word text and reports severe transfer drops to unrelated model families. This project implements optional hashed character 3–5-gram weights but abstains on short text and requires unseen-family testing.
 
 ## Explainable cue rubric review (2026-07-16 follow-up)
-- **Simple models are all you need** (ALTA 2024, ACL Anthology id `2024.alta-1.19`) found that an ensemble of word-frequency, stylometric, readability, POS, and information-theoretic models reached 0.855 held-out accuracy on its shared task. Portable idea: combine independent evidence families instead of letting one continuous feature dominate.
+- **Simple models are all you need** (ALTA 2024, ACL Anthology id `2024.alta-1.19`) found that an ensemble of word-frequency, stylometric, readability, POS, and information-theoretic models reached 0.855 held-out accuracy on its shared task. Portable idea: evaluate trained lightweight feature ensembles. That result does not validate equal-weight rule counting or establish independence between our families.
 - **Detection and Measurement of Syntactic Templates in Generated Text** (EMNLP 2024, DOI `10.18653/v1/2024.emnlp-main.368`) measures repeated POS templates, compression, template rate, and length-normalized templates per token. The authors explicitly do not claim that a template proves AI authorship. Portable approximation: expose repeated openings, short rhetorical runs, and repeated content phrasing as named cues, never proof.
 - **MoSEs** (EMNLP 2025, DOI `10.18653/v1/2025.emnlp-main.294`) shows that text length, n-gram repetition, type-token ratio, probability moments, and semantic neighborhood affect the appropriate decision threshold. Portable idea: condition heuristic thresholds on text coverage instead of using one static cutoff for every post.
 - **Show, Don't TELL** (arXiv `2605.27921`, 2026) argues that unexplained detector scores are poorly aligned with user needs and evaluates explanations for concreteness, falsifiability, coherence, plausibility, and grounding. Portable idea: show the exact cue family and observed trigger for every point.
@@ -75,7 +75,7 @@ This file is a curated list of papers, benchmarks, and open-source repos relevan
 - **WaveDetect** (Findings ACL 2026, DOI `10.18653/v1/2026.findings-acl.424`) applies wavelets to token-probability signals. Not portable to a dependency-free userscript because it requires probability sequences from a language model.
 - **NOTAI.AI** (arXiv `2603.05617`, 2026) combines Fast-DetectGPT curvature, ModernBERT, readability, stylometry, XGBoost, and SHAP. Its explanation-first ensemble is directionally useful, but its neural/curvature components require model inference and are not private in-tab heuristics.
 
-Implemented from this review: independent weighted cue families, fixed length/sample classes, visible trigger-level explanations, no visible pseudo-probability, and explicit separation between exact cue count and sample size.
+Current implementation: six hand-written, correlated cue families counted equally, fixed sample classes, and highlighted trigger examples. Their exact thresholds are engineering choices, not validated results from these papers. Historical weighted point fields were removed in 0.4; the legacy hand-tuned logistic model is diagnostic-only. Versions 0.5.1–0.6.0 displayed the family count on a 0–100 scale; 0.6.1 restores an explicit count. No version establishes an authorship probability from this rubric.
 
 ## Robustness / fairness (important for UX + “certainty” caps)
 - Liang et al., **GPT detectors are biased against non-native English writers** (Patterns 2023, DOI `10.1016/j.patter.2023.100779`; repo: `Weixin-Liang/ChatGPT-Detector-Bias`).

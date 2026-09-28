@@ -2,6 +2,13 @@
 
 All notable changes are documented here.
 
+## 0.6.1 - 2026-09-28
+
+- Keep **AI Score** and six bars, but display the explicit **N/6 cues** count instead of the 0–100 conversion that made every single-family match appear as 17. Explain that a probability is unavailable and zero cues does not establish human authorship.
+- Bound badges by their parent width, allow their height and labels to wrap, reset conflicting host-button sizing, and reduce secondary text. Preserve sample/language states, keyboard access, dark mode, and forced colors.
+- Audit the detector against the project's local papers and primary research sources; correct overstated research notes. Add reproducible synthetic probes showing phrase-variant misses, list-marker sensitivity, and the AI-job-title false match. These are documented limitations, not an authorship benchmark.
+- Preserve the detector, weights, thresholds, extraction, and site settings. Proposed detection changes require evaluation rather than tuning to an unlabeled feed. See [research grounding](docs/research-grounding.md).
+
 ## 0.6.0 - 2026-09-27
 
 - Add an experimental Facebook adapter to the combined script and generate an optional Facebook-only distribution. Support explicit desktop post text markers and permalink-identified comments/replies in fixture-tested feed, profile/permalink, and post-dialog structures.

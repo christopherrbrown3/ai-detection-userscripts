@@ -1,0 +1,14 @@
+[
+  {"id":"single-stock-phrase","question":"Does one stock phrase meet the current combination threshold?","text":"Here are the notes from our repair this week. We checked the hinge on Tuesday and replaced the old latch after lunch."},
+  {"id":"combined-stock-phrases","question":"Does a second distinct framing phrase change the family count?","text":"Here are the key takeaways from our repair this week. We checked the hinge on Tuesday and replaced the old latch after lunch."},
+  {"id":"canonical-announcement","question":"Does the exact announcement phrase with two promotional terms match?","text":"I'm excited to share our new tool with the team. We hope this robust design will support a scalable service for everyone."},
+  {"id":"announcement-variant","question":"Does removing the subject change that result?","text":"Excited to share our new tool with the team. We hope this robust design will support a scalable service for everyone."},
+  {"id":"bullet-list","question":"How is a three-item bullet list handled?","text":"We checked the workshop before opening it today.\n• The door opens.\n• The light works.\n• The roof holds."},
+  {"id":"arrow-list","question":"Does an equivalent arrow list preserve that result?","text":"We checked the workshop before opening it today.\n→ The door opens.\n→ The light works.\n→ The roof holds."},
+  {"id":"professional-role","question":"Does an AI job title incorrectly trigger the self-disclosure descriptor?","text":"As an AI engineer, I spent Tuesday fixing a broken test. The problem was a missing file and we restored it from the backup."},
+  {"id":"explicit-model-reference","question":"Does explicit model wording produce the same count as one mundane style family?","text":"As an AI language model, I can explain the general steps. I do not know what happened in your workshop yesterday."},
+  {"id":"quoted-reference","question":"Is quoted model wording excluded?","text":"The article quoted \"as an AI\" while explaining how the product works. We discussed the example at our meeting before going home."},
+  {"id":"contrast-rhetoric","question":"Are contrast constructions outside the phrase list observed?","text":"We don't need more dashboards. We need clearer decisions. This isn't a tooling problem. It's a question of how our team works together."},
+  {"id":"very-short","question":"Does a short sample have a distinct evidence status?","text":"I agree with your point. That is helpful!"},
+  {"id":"uncertain-language","question":"Is language abstention distinct from zero matches?","text":"No puedo asistir a la reunión de mañana. La oficina está cerrada y vamos a trabajar desde casa esta semana."}
+]
