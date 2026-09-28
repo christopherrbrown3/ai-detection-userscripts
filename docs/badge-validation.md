@@ -1,5 +1,15 @@
 # Cue count and badge validation — 0.6.1
 
+## 0.6.2 compact badge follow-up
+
+On 2026-09-28, assessed badge labels were reduced to **AI Score** alongside the six bars, at the user's request. Exact counts remain in the details panel and accessible name. Short-sample and unassessed labels are preserved. Detection and extraction are unchanged.
+
+All 138 JavaScript and 12 Python tests, generated-artifact consistency, compilation, and whitespace checks passed. The same isolated Chromium layout harness passed all 18 cases (desktop, narrow/dark, and enlarged text), with no overflow, page errors, or numeric cue labels in assessed badges. Keyboard activation, Escape focus restoration, panel bounds, forced colors, and reduced motion passed. Desktop and narrow screenshots were visually inspected. Typical assessed badges now measure about 132 × 30 px. [Recorded 0.6.2 layout results](compact-badge-layout-results.json).
+
+Post-merge native Safari and issue #5 acceptance findings will be recorded on the [Facebook issue](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/5). These automated checks alone do not close its outstanding live-validation criteria.
+
+## 0.6.1 evidence
+
 Validated on 2026-09-28. This release changes presentation, not detection rules or authorship accuracy.
 
 ## Automated verification
