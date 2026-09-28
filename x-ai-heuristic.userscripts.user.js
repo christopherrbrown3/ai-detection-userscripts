@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         X AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.1
+// @version      0.6.2
 // @description  Adds an experimental, privacy-preserving AI-style signal to X/Twitter posts and replies.
 // @author       christopherrbrown3
 // @license      MIT
@@ -1376,7 +1376,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score: ' + cueCount(cues) : 'AI Score: not assessed';
+    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
     if (cues.assessed) {
       badge.appendChild(createCueMeter(cues));
@@ -2218,5 +2218,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.1",distribution:"targeted"});
+  bootAIHeuristic([{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.2",distribution:"targeted"});
 })();

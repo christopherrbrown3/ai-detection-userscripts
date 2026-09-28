@@ -512,7 +512,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score: ' + cueCount(cues) : 'AI Score: not assessed';
+    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
     if (cues.assessed) {
       badge.appendChild(createCueMeter(cues));

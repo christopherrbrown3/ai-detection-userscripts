@@ -61,7 +61,8 @@ async (page) => {
     const badges=await measure();
     assert(badges.length===6,'missing badge state');
     assert(badges.every(b=>!b.overflow&&!b.childOverflow),'overflow: '+JSON.stringify({spec,badges}));
-    assert(badges.every(b=>!/\/100|%/.test(b.text)),'percentage-like score remains');
+    assert(badges.every(b=>!/\d|cues|%/.test(b.text)),'redundant cue count or percentage remains');
+    assert(badges.find(b=>b.id==='one').text==='AI Score','assessed badge label');
     assert(badges.find(b=>b.id==='one').filled===1 && badges.find(b=>b.id==='one').bars===6,'count/bar agreement');
     assert(badges.find(b=>b.id==='uncertain').bars===0,'unassessed meter');
     results.push({spec,badges});

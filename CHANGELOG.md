@@ -2,6 +2,11 @@
 
 All notable changes are documented here.
 
+## 0.6.2 - 2026-09-28
+
+- Simplify assessed badges to **AI Score** and the six bars, removing the redundant numeric cue-count label. Keep the exact count in details and accessible names, and preserve short-sample and unassessed language states.
+- Preserve detection rules, extraction, settings, and installation permissions.
+
 ## 0.6.1 - 2026-09-28
 
 - Keep **AI Score** and six bars, but display the explicit **N/6 cues** count instead of the 0–100 conversion that made every single-family match appear as 17. Explain that a probability is unavailable and zero cues does not establish human authorship.

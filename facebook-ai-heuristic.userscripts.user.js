@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         Facebook AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.1
+// @version      0.6.2
 // @description  Adds opt-in, local writing-style cues to supported Facebook desktop posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -1375,7 +1375,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score: ' + cueCount(cues) : 'AI Score: not assessed';
+    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
     if (cues.assessed) {
       badge.appendChild(createCueMeter(cues));
@@ -2316,5 +2316,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.6.1",distribution:"targeted"});
+  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.6.2",distribution:"targeted"});
 })();
