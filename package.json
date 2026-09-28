@@ -1,6 +1,6 @@
 {
   "name": "ai-detection-userscripts",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Build and test tooling for local AI-style signal userscripts.",
   "scripts": {

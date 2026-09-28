@@ -38,13 +38,13 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-The badge shows **AI Score: N/100**, a six-bar meter, and a **Heuristic** label. Each filled bar is one matched pattern family; the score is the number of matched families divided by six, multiplied by 100 and rounded. For example, two matches give **33/100** and two filled bars. This is a readable style-cue score, **not the probability that AI wrote the text**. Open it to see the exact count, descriptions, and highlighted examples. The original post is never marked up or changed.
+The badge shows **AI Score: N/6 cues** and a six-bar meter. Each filled bar is one matched pattern family, regardless of how often it occurs. For example, two families give **2/6 cues** and two filled bars. **Authorship probability is unavailable**: these families are not equally predictive or statistically independent, and the project has no validated probability model for this display. Open the badge for descriptions and highlighted examples. The original post is never marked up or changed.
 
-- **0/100** means the rules ran and found no configured patterns. It does not establish human authorship.
+- **0/6 cues** means the rules ran and found no configured patterns. It does not establish human authorship. Generated text can also match none.
 - **Short sample** appears directly on the badge for fewer than 20 words or 2 sentences/list items. Matches in these samples may be incidental.
 - **Not assessed** appears with **Language uncertain** or **Unsupported language** when there is too little evidence to apply the English rules. This is different from zero matches.
 
-Short, unassessed, and zero-match badges use neutral colors. Other matches use one accent color without a traffic-light severity scale. Unassessed text has no numeric score or meter, so it cannot be mistaken for a zero. Screen readers announce the heuristic score, exact count, and sample status. The panel also reports word and sentence counts and classifies longer samples as standard or long (at least 80 words and 4 sentences/list items).
+Short, unassessed, and zero-match badges use neutral colors. Other matches use one accent color without a traffic-light severity scale. Unassessed text has no numeric count or meter, so it cannot be mistaken for a zero. Screen readers announce the exact count, unavailable probability, and sample status. The panel also reports word and sentence counts and classifies longer samples as standard or long (at least 80 words and 4 sentences/list items).
 
 The six families are explicit model references, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Descriptions report observable patterns, not rhetorical intent or authorship. Lists are excluded from the three prose-based rhythm/repetition checks; counted openings are excluded from phrase repetition. These safeguards reduce overlapping matches without claiming that the families are statistically independent.
 
@@ -90,6 +90,8 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows every contributing cue; otherwise it explicitly reports that the text was not assessed. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
 
 The legacy experimental model output remains available only in Technical details for development comparison. A future trained model may replace the rubric only after a suitable distributable corpus and held-out report are published.
+
+Versions 0.5.1–0.6.0 converted the count to 0–100, making one family always appear as **17**. Version 0.6.1 removes that misleading precision without changing the detector. See the [research grounding and accuracy audit](docs/research-grounding.md) for the version history, known misses/false matches, exact research-to-code gaps, and the evaluation required before changing the model. The [badge validation report](docs/badge-validation.md) records overflow regression checks and live Safari verification.
 
 The offline pipeline enforces:
 
