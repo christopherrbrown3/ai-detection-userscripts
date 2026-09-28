@@ -35,7 +35,7 @@ export function loadDom(platform, html, url, options = {}) {
   const runtime = fs.readFileSync(path.join(ROOT, 'src/runtime.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(ROOT, 'src/platforms', `${platform}.js`), 'utf8');
   const bundle = JSON.stringify(loadModels());
-  dom.window.eval(`${detector}\n${runtime}\n${adapter}\nthis.__controller = startAIHeuristic(createPlatformAdapter(), ${bundle});`);
+  dom.window.eval(`${detector}\n${runtime}\n${adapter}\nthis.__controller = startAIHeuristic(createPlatformAdapter(), ${bundle}, ${JSON.stringify(options.runtimeOptions || {})});`);
   Object.defineProperty(dom.window.document, 'readyState', { value: 'interactive', configurable: true });
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded', { bubbles: true }));
   if (options.autoScan !== false) dom.window.__controller.scanNow();

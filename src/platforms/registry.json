@@ -79,6 +79,47 @@
         "/message",
         "/chat"
       ]
+    },
+    {
+      "id": "facebook",
+      "name": "Facebook",
+      "module": "facebook.js",
+      "scriptName": "Facebook AI-Style Cues (Local)",
+      "description": "Adds opt-in, local writing-style cues to supported Facebook desktop posts and comments.",
+      "output": "facebook-ai-heuristic.userscripts.user.js",
+      "hosts": [
+        "www.facebook.com",
+        "facebook.com"
+      ],
+      "status": "experimental",
+      "settingsStorage": "manager",
+      "capabilities": [
+        "desktop message anchors (fixtures)",
+        "post dialogs (fixtures)",
+        "permalink comments/replies (fixtures)"
+      ],
+      "excludedPaths": [
+        "/messages",
+        "/messenger",
+        "/groups",
+        "/marketplace",
+        "/stories",
+        "/reel",
+        "/reels",
+        "/watch",
+        "/gaming",
+        "/notifications",
+        "/events",
+        "/settings",
+        "/privacy",
+        "/business",
+        "/ads",
+        "/login",
+        "/checkpoint",
+        "/photos",
+        "/videos",
+        "/search"
+      ]
     }
   ]
 }

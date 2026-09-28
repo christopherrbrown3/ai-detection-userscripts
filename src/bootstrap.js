@@ -59,6 +59,8 @@ function bootAIHeuristic(registry, factories, models, release) {
   const instance = 'aih-' + Math.random().toString(36).slice(2);
   const selector = 'meta[data-ai-style-owner="' + entry.id + '"]';
   const hint = 'Multiple script installations were found. Keep the combined script enabled and disable the older site scripts in Userscripts, then refresh.';
+  const supportNotice = entry.status === 'experimental' ? entry.name + ' support is experimental. Some posts or comments may be skipped.' : '';
+  const notice = (duplicate) => [supportNotice, duplicate ? hint : ''].filter(Boolean).join(' ');
 
   function rank(version, distribution) {
     return version.split('.').map(Number).concat(distribution === 'combined' ? 1 : 0);
@@ -70,7 +72,7 @@ function bootAIHeuristic(registry, factories, models, release) {
     return 0;
   }
   function ping() { marker.setAttribute('data-ai-alive', '1'); }
-  function duplicate() { if (controller) controller.setNotice(hint); }
+  function duplicate() { if (controller) controller.setNotice(notice(true)); }
   function releaseOwnership() {
     if (!marker) return;
     marker.removeEventListener('ai-style-ping', ping);
@@ -128,8 +130,9 @@ function bootAIHeuristic(registry, factories, models, release) {
     try {
       controller = startAIHeuristic(adapter, models, {
         instance,
-        notice: coexistence ? hint : '',
+        notice: notice(coexistence),
         enabledByDefault: entry.status !== 'experimental',
+        settingsStorage: entry.settingsStorage,
         routeSupported(current) {
           return !entry.excludedPaths.some((path) => current.pathname === path || current.pathname.startsWith(path + '/')) &&
             (!adapter.supportsUrl || adapter.supportsUrl(current));

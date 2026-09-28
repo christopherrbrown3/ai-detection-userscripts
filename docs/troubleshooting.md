@@ -36,11 +36,15 @@ Do not include private messages, account data, or text you do not have permissio
 
 ## A new site has no badges
 
-Only LinkedIn, X/Twitter, and Reddit are supported in v0.5. Facebook, Threads, and Bluesky require their own verified adapters. See [supported sites](supported-sites.md). On a supported site, an unfamiliar layout is skipped rather than analyzing unrelated page text.
+LinkedIn, X/Twitter, and Reddit are supported; Facebook desktop support is experimental in v0.6 and starts off. On `www.facebook.com`, open **Style cues off · Settings** and enable analysis for that site. Grant Userscripts website access in Safari if the launcher is missing, then refresh. Facebook comments need an owned comment permalink and recognized text body; ambiguous shared cards and unfamiliar layouts are skipped. Mobile hosts, Groups routes, messaging, Stories, Reels, and Marketplace are outside this release. See [Facebook validation](facebook-validation.md).
+
+Instagram, Threads, Bluesky, and YouTube still require their own adapters. See [supported sites](supported-sites.md).
 
 ## Reset settings
 
-Open Safari's website-data controls and remove local storage for the affected site, or run this in that site's developer console:
+For Facebook, use **Style cue settings** to restore the defaults: site analysis off, comments/replies on, and both hide filters off. Its preferences live in the userscript manager, so clearing Facebook website storage does not reset them. A manager that lacks `GM.getValue`/`GM.setValue`, or refuses access, shows a persistence notice and uses page/tab preferences instead.
+
+For LinkedIn, X/Twitter, and Reddit, open Safari's website-data controls and remove local storage for the affected site, or run this in that site's developer console:
 
 ```js
 Object.keys(localStorage)

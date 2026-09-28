@@ -1,4 +1,4 @@
-"""Produce an uncommitted test bundle with a fourth adapter via the public builder."""
+"""Produce an uncommitted test bundle with an additional adapter via the public builder."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import shutil

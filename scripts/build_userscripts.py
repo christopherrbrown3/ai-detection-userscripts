@@ -56,6 +56,8 @@ def validate_registry(registry: dict, module_root: Path) -> None:
         ids.add(ident)
         if site.get("status") not in ["stable", "experimental", "planned"]:
             raise ValueError(f"Invalid support status: {ident}")
+        if site.get("settingsStorage", "page") not in ["page", "manager"]:
+            raise ValueError(f"Invalid settings storage: {ident}")
         module = site.get("module", "")
         if not re.fullmatch(r"[a-z][a-z0-9-]*\.js", module) or not (module_root / module).is_file():
             raise ValueError(f"Missing or invalid adapter module: {ident}")
@@ -107,8 +109,10 @@ def metadata(spec: dict, version: str) -> str:
              f"// @downloadURL  {url}", f"// @updateURL    {update_url}"]
     matches = dict.fromkeys(f"https://{host}/*" for site in spec["sites"] for host in site["hosts"])
     lines.extend(f"// @match        {match}" for match in matches)
-    lines.extend(["// @run-at       document-idle", "// @inject-into  content", "// @grant        none",
-                  "// @noframes", "// ==/UserScript=="])
+    grants = ["GM.getValue", "GM.setValue"] if any(site.get("settingsStorage") == "manager" for site in spec["sites"]) else ["none"]
+    lines.extend(["// @run-at       document-idle", "// @inject-into  content"])
+    lines.extend(f"// @grant        {grant}" for grant in grants)
+    lines.extend(["// @noframes", "// ==/UserScript=="])
     return "\n".join(lines)
 
 
@@ -123,6 +127,9 @@ def build(spec: dict, model_bundle: dict, version: str, root: Path = ROOT) -> st
         source = (root / "src/platforms" / site["module"]).read_text().rstrip()
         factories.append(f"{json.dumps(site['id'])}: function () {{\n{source}\nreturn createPlatformAdapter();\n}}")
     registry = [{key: site[key] for key in ["id", "name", "hosts", "status", "capabilities", "excludedPaths"]} for site in sites]
+    for entry, site in zip(registry, sites):
+        if "settingsStorage" in site:
+            entry["settingsStorage"] = site["settingsStorage"]
     models = {**model_bundle, "models": {key: value for key, value in model_bundle.get("models", {}).items()
                                         if key == "default" or any(key.startswith(site["id"] + ":") for site in sites)}}
     compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(",", ":"))

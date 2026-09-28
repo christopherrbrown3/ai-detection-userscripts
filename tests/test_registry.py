@@ -38,6 +38,7 @@ class RegistryTests(unittest.TestCase):
         self.reject(lambda r: r['sites'][0].pop('scriptName'))
         self.reject(lambda r: r['sites'][0].update(hosts=[{}]))
         self.reject(lambda r: r['sites'][0].update(status='unknown'))
+        self.reject(lambda r: r['sites'][0].update(settingsStorage='remote'))
 
     def test_planned_sites_cannot_enter_a_release_bundle(self):
         self.registry['sites'][0]['status'] = 'planned'

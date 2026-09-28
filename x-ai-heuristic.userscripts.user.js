@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         X AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.5.1
+// @version      0.6.0
 // @description  Adds an experimental, privacy-preserving AI-style signal to X/Twitter posts and replies.
 // @author       christopherrbrown3
 // @license      MIT
@@ -862,7 +862,7 @@ function createDetectorEngine(options) {
   };
 }
 
-function aiHeuristicReadContent(node) {
+function aiHeuristicReadContent(node, options = {}) {
   const excluded = { quotes: 0, code: 0 };
   if (!node) return { text: '', excluded };
   const parts = [];
@@ -875,7 +875,8 @@ function aiHeuristicReadContent(node) {
     }
     if (current.nodeType !== 1) return;
     if (current.matches('[data-ai-heuristic-ui], script, style, template, noscript, button, [role="button"], input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
-    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2')) {
+    if (current.matches('blockquote, q, [data-testid="quoteTweet"], .update-components-mini-update-v2') ||
+      (current !== node && options.quoteSelector && current.matches(options.quoteSelector))) {
       excluded.quotes += 1;
       parts.push('\n');
       return;
@@ -932,6 +933,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     hideLow: false
   };
   let settings = loadSettings();
+  const settingsManager = getSettingsManager();
+  const managerStorageKey = storageKey + '@' + location.origin;
+  let settingsPending = Boolean(settingsManager);
+  let settingsWrite = Promise.resolve();
+  let storageNotice = options.settingsStorage === 'manager' && !settingsManager
+    ? 'This script manager cannot save preferences outside page storage. They may reset after reloading.' : '';
   let records = new WeakMap();
   let activePopover = null;
   let observer = null;
@@ -1148,7 +1155,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       padding: 9px 10px;
     }
     .ai-heuristic-popover__section { border-top: 1px solid var(--aih-border); margin-top: 13px; padding-top: 12px; }
-    .ai-heuristic-popover__section h3 { font-size: 12px; margin: 0 0 7px; }
+    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 12px; margin: 0 0 7px; }
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
@@ -1254,10 +1261,48 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { return { ...defaults }; }
   }
 
+  function getSettingsManager() {
+    if (options.settingsStorage !== 'manager') return null;
+    try {
+      if (typeof GM !== 'undefined' && typeof GM.getValue === 'function' && typeof GM.setValue === 'function') return GM;
+    } catch (_) { /* Preserve the page-storage fallback in other managers. */ }
+    return null;
+  }
+
+  function persistManagedSettings(value) {
+    if (!settingsManager) return;
+    // Keep rapid setting changes ordered, including the initial migration.
+    const saved = { ...value };
+    settingsWrite = settingsWrite.then(() => settingsManager.setValue(managerStorageKey, saved)).then(() => {
+      storageNotice = '';
+    }).catch(() => {
+      storageNotice = 'Settings could not be saved. Changes may last only for this tab.';
+    });
+  }
+
+  async function loadManagedSettings() {
+    if (!settingsManager) return;
+    try {
+      const saved = await settingsManager.getValue(managerStorageKey, null);
+      if (stopped) return;
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) settings = normalizeSettings(saved);
+      else persistManagedSettings(settings); // Import existing origin-local preferences once.
+    } catch (_) {
+      storageNotice = 'Saved settings are unavailable. Changes may last only for this tab.';
+    } finally {
+      if (!stopped) {
+        settingsPending = false;
+        refreshState(true);
+      }
+    }
+  }
+
   function saveSettings(next) {
+    if (settingsPending || stopped) return;
     settings = normalizeSettings({ ...settings, ...next });
     try { localStorage.setItem(storageKey, JSON.stringify(settings)); }
     catch (_) { /* Private browsing/storage denial: keep this tab's preferences. */ }
+    persistManagedSettings(settings);
     closePopover(false);
     refreshState(true);
   }
@@ -1419,9 +1464,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function syncSettingsLauncher() {
     const existing = document.querySelector('.ai-heuristic-launcher' + owned);
-    const label = settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
-    if (existing) { existing.textContent = label; return; }
+    const label = settingsPending ? 'Loading style cue settings…' : settings.enabled ? 'Style cue settings' : 'Style cues off · Settings';
+    if (existing) { existing.textContent = label; existing.disabled = settingsPending; return; }
     const launcher = createElement('button', 'ai-heuristic-launcher', label);
+    launcher.disabled = settingsPending;
     launcher.type = 'button';
     launcher.dataset.aiHeuristicUi = '1';
     launcher.dataset.aiPlatform = adapter.id;
@@ -1732,6 +1778,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return Boolean(element && element.closest('[data-ai-heuristic-ui]'));
   }
 
+  function candidateAncestors(target) {
+    const ancestors = [];
+    let element = target && target.closest(candidateSelector);
+    while (element) {
+      ancestors.push(element);
+      element = element.parentElement && element.parentElement.closest(candidateSelector);
+    }
+    return ancestors;
+  }
+
   function onMutations(mutations) {
     if (stopped || !running) return;
     if (!analysisAllowed() || location.href !== lastUrl) { refreshState(true); return; }
@@ -1745,13 +1801,22 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (target && tracked.has(target) && !target.matches(candidateSelector)) {
         untrack(target);
       }
-      const owner = target && target.closest(candidateSelector);
+      const owners = candidateAncestors(target);
       if (mutation.type === 'childList' && changed.length && changed.every(isOwnUI)) {
-        const record = owner && records.get(owner);
-        if (record && record.badge && !record.badge.isConnected) track(owner);
+        for (const owner of owners) {
+          const record = records.get(owner);
+          if (!record) continue;
+          if (record.badge && !record.badge.isConnected) track(owner);
+          break;
+        }
         continue;
       }
-      if (owner) track(owner);
+      // A nested selector match may be a text marker or quoted card rejected
+      // by the adapter. Walk only its ancestors to reach the actual owner.
+      for (const owner of owners) {
+        track(owner);
+        if (tracked.has(owner)) break;
+      }
       mutation.addedNodes.forEach((node) => discover(node));
       if (mutation.removedNodes.length) removedContent = true;
     }
@@ -1780,6 +1845,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function appendRuntimeNotice(parent) {
     if (notice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', notice));
+    if (storageNotice) parent.appendChild(createElement('p', 'ai-heuristic-popover__notice', storageNotice));
     if (!routeSupported()) parent.appendChild(createElement('p', 'ai-heuristic-popover__summary', 'Style cues are inactive on this page.'));
   }
 
@@ -1804,7 +1870,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1918,6 +1984,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
+  loadManagedSettings();
 
   return {
     scanNow, resetAndRescan, stop, setNotice,
@@ -1989,6 +2056,8 @@ function bootAIHeuristic(registry, factories, models, release) {
   const instance = 'aih-' + Math.random().toString(36).slice(2);
   const selector = 'meta[data-ai-style-owner="' + entry.id + '"]';
   const hint = 'Multiple script installations were found. Keep the combined script enabled and disable the older site scripts in Userscripts, then refresh.';
+  const supportNotice = entry.status === 'experimental' ? entry.name + ' support is experimental. Some posts or comments may be skipped.' : '';
+  const notice = (duplicate) => [supportNotice, duplicate ? hint : ''].filter(Boolean).join(' ');
 
   function rank(version, distribution) {
     return version.split('.').map(Number).concat(distribution === 'combined' ? 1 : 0);
@@ -2000,7 +2069,7 @@ function bootAIHeuristic(registry, factories, models, release) {
     return 0;
   }
   function ping() { marker.setAttribute('data-ai-alive', '1'); }
-  function duplicate() { if (controller) controller.setNotice(hint); }
+  function duplicate() { if (controller) controller.setNotice(notice(true)); }
   function releaseOwnership() {
     if (!marker) return;
     marker.removeEventListener('ai-style-ping', ping);
@@ -2058,8 +2127,9 @@ function bootAIHeuristic(registry, factories, models, release) {
     try {
       controller = startAIHeuristic(adapter, models, {
         instance,
-        notice: coexistence ? hint : '',
+        notice: notice(coexistence),
         enabledByDefault: entry.status !== 'experimental',
+        settingsStorage: entry.settingsStorage,
         routeSupported(current) {
           return !entry.excludedPaths.some((path) => current.pathname === path || current.pathname.startsWith(path + '/')) &&
             (!adapter.supportsUrl || adapter.supportsUrl(current));
@@ -2137,5 +2207,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.5.1",distribution:"targeted"});
+  bootAIHeuristic([{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.0",distribution:"targeted"});
 })();

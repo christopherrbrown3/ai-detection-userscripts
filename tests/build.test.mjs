@@ -10,7 +10,8 @@ for (const file of files) {
     const script = readFileSync(file, 'utf8');
     const metadata = readFileSync(file.replace('.user.js', '.meta.js'), 'utf8');
     assert.match(script, /^\/\/ @inject-into\s+content$/m);
-    assert.match(script, /^\/\/ @grant\s+none$/m);
+    const grants=[...script.matchAll(/^\/\/ @grant\s+(\S+)$/gm)].map(m=>m[1]);
+    assert.deepEqual(grants,file.startsWith('ai-style-cues.')||file.startsWith('facebook-') ? ['GM.getValue','GM.setValue'] : ['none']);
     assert.match(script, /^\/\/ @noframes$/m);
     assert.ok(metadata.includes('// @version      ' + version));
     assert.ok(script.includes(metadata.trim()));
@@ -38,7 +39,10 @@ test('targeted update identities and host permissions stay compatible with v0.4'
     allHosts.push(...get('match'));
   }
   const combined=metadata('ai-style-cues.userscripts.user.js');
-  assert.deepEqual(combined.filter(m=>m[1]==='match').map(m=>m[2]),allHosts);
+  const combinedMatches=combined.filter(m=>m[1]==='match').map(m=>m[2]);
+  const registry=JSON.parse(readFileSync('src/platforms/registry.json','utf8'));
+  assert.deepEqual(combinedMatches,[...new Set(registry.sites.filter(s=>s.status!=='planned').flatMap(s=>s.hosts.map(h=>'https://'+h+'/*')))]);
+  assert.deepEqual(combinedMatches.filter(m=>allHosts.includes(m)),allHosts);
   assert.equal(combined.find(m=>m[1]==='updateURL')[2],repository+'ai-style-cues.userscripts.meta.js');
   assert.equal(combined.find(m=>m[1]==='downloadURL')[2],repository+'ai-style-cues.userscripts.user.js');
 });

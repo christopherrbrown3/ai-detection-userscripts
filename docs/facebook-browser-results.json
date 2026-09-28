@@ -1,0 +1,133 @@
+{
+  "browser": "153.0.8010.55",
+  "syntheticOnly": true,
+  "isolatedWorld": true,
+  "csp": "script-src 'none'",
+  "ui": {
+    "badges": 6,
+    "narrowBounds": {
+      "x": 12,
+      "y": 12,
+      "width": 368,
+      "height": 676.09375
+    },
+    "keyboard": true,
+    "dark": true,
+    "forcedColors": true,
+    "reducedMotion": true,
+    "headingContrast": true
+  },
+  "coexistence": [
+    {
+      "order": [
+        "combined",
+        "targeted"
+      ],
+      "active": [
+        {
+          "mo": 2,
+          "io": 1,
+          "interval": 1
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ],
+      "stopped": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ]
+    },
+    {
+      "order": [
+        "targeted",
+        "combined"
+      ],
+      "active": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 2,
+          "io": 1,
+          "interval": 1
+        }
+      ],
+      "stopped": [
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        },
+        {
+          "mo": 0,
+          "io": 0,
+          "interval": 0
+        }
+      ]
+    }
+  ],
+  "workloads": [
+    {
+      "distribution": "combined",
+      "startup": {
+        "badges": 11,
+        "analyses": 4
+      },
+      "firstBadgeMs": 38.89999997615814,
+      "extractions": 81,
+      "analyses": 5,
+      "diagnostics": 0,
+      "flushTotalMs": 26.09999990463257,
+      "flushMaxMs": 3.399999976158142,
+      "runtime": {
+        "tracked": 40,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    },
+    {
+      "distribution": "targeted",
+      "startup": {
+        "badges": 11,
+        "analyses": 4
+      },
+      "firstBadgeMs": 38.5,
+      "extractions": 81,
+      "analyses": 5,
+      "diagnostics": 0,
+      "flushTotalMs": 24.100000023841858,
+      "flushMaxMs": 3.400000035762787,
+      "runtime": {
+        "tracked": 40,
+        "detachedTracked": 0,
+        "cache": 5,
+        "pending": 0
+      },
+      "stopped": {
+        "mo": 0,
+        "io": 0,
+        "interval": 0
+      }
+    }
+  ],
+  "managerAPIs": "GM.getValue/GM.setValue mock; native manager persistence verified separately"
+}
