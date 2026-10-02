@@ -58,6 +58,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   let routeTimer = null;
   let bodyReference = null;
   let lastUrl = location.href;
+  let navigationPending = false;
   const reportedFailures = new Set();
   const engine = createDetectorEngine({ platform: adapter.id, modelBundle });
   const storageKey = `ai-heuristic:${adapter.id}:settings:v2`;
@@ -1017,7 +1018,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && !navigationPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1052,6 +1053,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function checkLocation() {
     if (location.href !== lastUrl || document.body !== bodyReference) refreshState(true);
+  }
+
+  function onNavigationStart() {
+    navigationPending = true;
+    refreshState(true);
+  }
+
+  function onNavigationFinish() {
+    navigationPending = false;
+    refreshState(true);
   }
 
   function onDocumentClick(event) {
@@ -1100,6 +1111,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       window.addEventListener('popstate', checkLocation);
       window.addEventListener('hashchange', checkLocation);
       window.addEventListener('pageshow', checkLocation);
+      if (adapter.navigationEvents) {
+        document.addEventListener(adapter.navigationEvents.start, onNavigationStart);
+        document.addEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+      }
       refreshState();
       document.addEventListener('click', onDocumentClick, true);
       document.addEventListener('keydown', onKeydown);
@@ -1125,6 +1140,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     window.removeEventListener('popstate', checkLocation);
     window.removeEventListener('hashchange', checkLocation);
     window.removeEventListener('pageshow', checkLocation);
+    if (adapter.navigationEvents) {
+      document.removeEventListener(adapter.navigationEvents.start, onNavigationStart);
+      document.removeEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+    }
     document.querySelectorAll('style' + owned + ', .ai-heuristic-launcher' + owned).forEach((node) => node.remove());
     if (options.onStop) options.onStop();
   }

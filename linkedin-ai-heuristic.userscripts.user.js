@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         LinkedIn AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.2
+// @version      0.7.0
 // @description  Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -922,6 +922,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   let routeTimer = null;
   let bodyReference = null;
   let lastUrl = location.href;
+  let navigationPending = false;
   const reportedFailures = new Set();
   const engine = createDetectorEngine({ platform: adapter.id, modelBundle });
   const storageKey = `ai-heuristic:${adapter.id}:settings:v2`;
@@ -1881,7 +1882,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && !navigationPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1916,6 +1917,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function checkLocation() {
     if (location.href !== lastUrl || document.body !== bodyReference) refreshState(true);
+  }
+
+  function onNavigationStart() {
+    navigationPending = true;
+    refreshState(true);
+  }
+
+  function onNavigationFinish() {
+    navigationPending = false;
+    refreshState(true);
   }
 
   function onDocumentClick(event) {
@@ -1964,6 +1975,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       window.addEventListener('popstate', checkLocation);
       window.addEventListener('hashchange', checkLocation);
       window.addEventListener('pageshow', checkLocation);
+      if (adapter.navigationEvents) {
+        document.addEventListener(adapter.navigationEvents.start, onNavigationStart);
+        document.addEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+      }
       refreshState();
       document.addEventListener('click', onDocumentClick, true);
       document.addEventListener('keydown', onKeydown);
@@ -1989,6 +2004,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     window.removeEventListener('popstate', checkLocation);
     window.removeEventListener('hashchange', checkLocation);
     window.removeEventListener('pageshow', checkLocation);
+    if (adapter.navigationEvents) {
+      document.removeEventListener(adapter.navigationEvents.start, onNavigationStart);
+      document.removeEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+    }
     document.querySelectorAll('style' + owned + ', .ai-heuristic-launcher' + owned).forEach((node) => node.remove());
     if (options.onStop) options.onStop();
   }
@@ -2023,6 +2042,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
  * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
  * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
  * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
+ * @property {{start: string, finish: string}} [navigationEvents] Document events bracketing SPA page replacement.
  * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
  * to the runtime. Null/empty extraction removes a previously attached badge.
  */
@@ -2050,6 +2070,12 @@ function validateAIAdapter(adapter, entry) {
   if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
     adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {
     throw new Error('Invalid observed attributes');
+  }
+  if (adapter.navigationEvents !== undefined) {
+    const events = adapter.navigationEvents;
+    if (!events || !['start', 'finish'].every(key => typeof events[key] === 'string' && /^[a-z][a-z0-9-]*$/.test(events[key])) || events.start === events.finish) {
+      throw new Error('Invalid navigation events');
+    }
   }
   return adapter;
 }
@@ -2283,5 +2309,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.2",distribution:"targeted"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.7.0",distribution:"targeted"});
 })();
