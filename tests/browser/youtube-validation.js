@@ -127,7 +127,7 @@ async (page) => {
   await page.evaluate(()=>{
     document.dispatchEvent(new Event('yt-navigate-start'));
     history.pushState({},'', '/@example/posts');
-    document.querySelector('ytd-page-manager').innerHTML='<ytd-browse><ytd-backstage-post-renderer id="channel-post"><yt-formatted-string id="content-text">I checked the garden gate after work yesterday. The new latch closes with a gentle push and the hinge is still secure.</yt-formatted-string></ytd-backstage-post-renderer></ytd-browse>';
+    document.querySelector('ytd-page-manager').innerHTML='<ytd-browse><ytd-backstage-post-renderer id="channel-post"><yt-formatted-string id="content-text">I checked the garden gate after work yesterday. The new latch closes with a gentle push and the hinge is still secure.</yt-formatted-string><ytd-backstage-poll-renderer hidden></ytd-backstage-poll-renderer></ytd-backstage-post-renderer><ytd-backstage-post-renderer id="channel-poll"><yt-formatted-string id="content-text">Which repair would you try first?</yt-formatted-string><ytd-backstage-poll-renderer>Option A Option B</ytd-backstage-poll-renderer></ytd-backstage-post-renderer></ytd-browse>';
     document.dispatchEvent(new Event('yt-navigate-finish'));
   });
   await page.locator('#channel-post .ai-heuristic-badge').waitFor();

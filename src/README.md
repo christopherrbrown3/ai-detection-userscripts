@@ -1,6 +1,6 @@
 # Userscript source
 
-The root `.user.js` and `.meta.js` files are generated, self-contained release artifacts: one combined default and three optional targeted builds.
+The root `.user.js` and `.meta.js` files are generated, self-contained release artifacts: one combined default and five optional targeted builds.
 
 - `detector.js`: shared sentence parser, cue rules, spans, and deferred diagnostic scoring.
 - `runtime.js`: structural extraction, scheduling/cache, settings, accessibility, and lifecycle cleanup.

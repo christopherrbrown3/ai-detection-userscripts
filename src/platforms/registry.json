@@ -133,9 +133,9 @@
       ],
       "status": "experimental",
       "capabilities": [
-        "watch descriptions (fixtures)",
-        "comments and replies (fixtures)",
-        "channel Posts and post permalinks (fixtures)"
+        "desktop watch descriptions (fixtures + Safari)",
+        "comments and replies (fixtures + Safari)",
+        "channel Posts and post permalinks (fixtures + Safari)"
       ],
       "excludedPaths": [
         "/shorts",

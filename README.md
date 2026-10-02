@@ -3,7 +3,7 @@
 [![CI](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml/badge.svg)](https://github.com/christopherrbrown3/ai-detection-userscripts/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f46e5.svg)](LICENSE)
 
-A privacy-first Safari userscript that shows observable writing-style cues on posts and comments on LinkedIn, X/Twitter, and Reddit, with experimental Facebook support.
+A privacy-first Safari userscript that shows observable writing-style cues on posts and comments on LinkedIn, X/Twitter, and Reddit, with experimental Facebook and YouTube support.
 
 > [!IMPORTANT]
 > This project analyzes surface writing patterns. It cannot prove who or what wrote a post. Short, edited, personalized, multilingual, and mixed-authorship text may be impossible to classify reliably. Never use a badge as the basis for an accusation or high-stakes decision.
@@ -17,9 +17,11 @@ A privacy-first Safari userscript that shows observable writing-style cues on po
 3. Accept the Userscripts installation prompt and grant access to the supported sites you want to use.
 4. If upgrading from the three site scripts, disable those scripts and refresh your tabs. Follow the [migration and rollback guide](docs/migration.md) to keep your settings and backups.
 
-One self-contained script supports LinkedIn, X/Twitter, and Reddit, plus opt-in Facebook desktop text analysis. Only the adapter for the current site runs. Instagram, Threads, Bluesky, and YouTube are not yet supported. See the generated [supported-site and route matrix](docs/supported-sites.md).
+One self-contained script supports LinkedIn, X/Twitter, and Reddit, plus opt-in Facebook and YouTube desktop text analysis. Only the adapter for the current site runs. Instagram, Threads, and Bluesky are not yet supported. See the generated [supported-site and route matrix](docs/supported-sites.md).
 
 **Facebook starts disabled.** On `www.facebook.com`, open **Style cues off · Settings** and turn on **Enable style cues on this site**. Version 0.6 adds `www.facebook.com` and `facebook.com` to the combined script's permissions; Safari may require website access before the launcher appears. Facebook is experimental: live Safari checks cover feed, profile/Page, permalink/dialog, comments/replies, and preference persistence, alongside synthetic regressions. Some layouts will be skipped. See [Facebook scope and validation](docs/facebook-validation.md).
+
+**YouTube starts disabled.** On `www.youtube.com`, open **Style cues off · Settings** and turn on **Enable style cues on this site**. Version 0.7 adds only `www.youtube.com` to the combined script's permissions. It analyzes creator descriptions, comments/replies, and supported channel Posts text. Titles, transcripts, live chat, Shorts, polls, and media analysis are excluded. Some layouts are skipped; see [YouTube scope and validation](docs/youtube-validation.md).
 
 Optional targeted installations retain their existing names, update URLs, and narrower host permissions:
 
@@ -29,12 +31,13 @@ Optional targeted installations retain their existing names, update URLs, and na
 | X/Twitter | [X script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/x-ai-heuristic.userscripts.user.js) | Posts and replies |
 | Reddit | [Reddit script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/reddit-ai-heuristic.userscripts.user.js) | Current Reddit, old Reddit, posts, and comments |
 | Facebook | [Facebook script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/facebook-ai-heuristic.userscripts.user.js) | Experimental desktop published-text markers and permalink-identified comments/replies; opt-in |
+| YouTube | [YouTube script](https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/youtube-ai-heuristic.userscripts.user.js) | Experimental desktop descriptions, comments/replies, channel Posts and post permalinks; opt-in |
 
 Manual installation: open Userscripts → Manage → Open Scripts Folder, copy the desired root-level `.user.js` file there, enable it, and refresh the target site. Keep only your intended installation enabled. Do not install the metadata-only `.meta.js` files.
 
 ### Compatibility
 
-The target is the current [Userscripts](https://github.com/quoid/userscripts) extension on Safari 16.4+ for macOS. The scripts include fallbacks for older emoji/CSS support, but older Safari releases and iOS layouts are best-effort rather than part of the automated fixture matrix. Current automated layouts cover LinkedIn feed posts/comments, profile activity, direct post permalinks, collapsed/expanded post text, X posts/replies, current Reddit posts/comments, old Reddit posts/comments, and synthetic Facebook desktop posts/dialogs/comments/replies. Facebook mobile hosts, Groups routes, messaging, Stories, Reels, and Marketplace are excluded.
+The target is the current [Userscripts](https://github.com/quoid/userscripts) extension on Safari 16.4+ for macOS. The scripts include fallbacks for older emoji/CSS support, but older Safari releases and iOS layouts are best-effort rather than part of the automated fixture matrix. Current automated layouts cover LinkedIn feed posts/comments, profile activity, direct post permalinks, collapsed/expanded post text, X posts/replies, current Reddit posts/comments, old Reddit posts/comments, synthetic Facebook desktop posts/dialogs/comments/replies, and YouTube descriptions/comments/channel Posts. Facebook mobile hosts, Groups routes, messaging, Stories, Reels, and Marketplace are excluded. YouTube mobile, Music, Studio, embedded players, Shorts, and live chat are excluded.
 
 ## What the badge means
 
