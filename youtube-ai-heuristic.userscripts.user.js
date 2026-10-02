@@ -2196,7 +2196,7 @@ function createPlatformAdapter() {
     'ytd-reel-video-renderer, ytd-shorts, ytd-live-chat-frame, yt-live-chat-renderer, ' +
     'ytd-transcript-renderer, ytd-transcript-search-panel-renderer, ytd-video-description-transcript-section-renderer, ' +
     'ytd-metadata-row-container-renderer, ytd-rich-metadata-row-renderer, ytd-video-description-infocards-section-renderer, ' +
-    'ytd-compact-video-renderer, ytd-video-renderer, ytd-rich-grid-media, ytd-mini-player';
+    'ytd-compact-video-renderer, ytd-video-renderer, ytd-rich-grid-media, ytd-miniplayer';
   const textSelector = 'yt-attributed-string#content-text, yt-formatted-string#content-text';
 
   function route(url) {
@@ -2258,7 +2258,7 @@ function createPlatformAdapter() {
     copy.style.whiteSpace = window.getComputedStyle(body).whiteSpace;
     // Author rich text is inline HTML. Unknown custom widgets, translated
     // panels, hidden helper labels and controls must not become prose.
-    copy.querySelectorAll(excludedContext + ', #translated-content').forEach(node => node.remove());
+    copy.querySelectorAll(excludedContext).forEach(node => node.remove());
     copy.querySelectorAll('*').forEach(node => {
       if (node.localName.includes('-') && !['yt-attributed-string', 'yt-formatted-string'].includes(node.localName)) node.remove();
     });

@@ -56,7 +56,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     const cue = window.__controller.getAnalysis(document.getElementById('comment-one')).cueAssessment.families[0];
     assert.equal(cue.id,'formulaic-framing');
     assert.ok(cue.spans.every(span=>span.start>=0 && span.end<=expected['comment-one'].length));
-    for(const id of ['draft','chat','transcript','cached','recommendation','unknown-comment']) assert.equal(document.getElementById(id).querySelector('.ai-heuristic-badge'),null,id);
+    for(const id of ['draft','chat','transcript','cached','recommendation','unknown-comment','mini-comment']) assert.equal(document.getElementById(id).querySelector('.ai-heuristic-badge'),null,id);
     assert.equal(document.querySelector('#description-inline-expander .ai-heuristic-badge'),null,'badge must be outside clipped expander');
   });
 
