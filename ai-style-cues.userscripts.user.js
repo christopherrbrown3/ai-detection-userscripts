@@ -2711,7 +2711,10 @@ function createPlatformAdapter() {
     if (element.matches(descriptionSelector)) return kind === 'post' ? descriptionBody(element) : null;
     if (element.matches(postSelector)) {
       if (!['post', 'posts'].includes(route(new URL(location.href)))) return null;
-      if (ownedNodes(element, 'ytd-backstage-poll-renderer, ytd-poll-renderer').length) return null;
+      // Ordinary Posts include an empty hidden poll placeholder in live markup.
+      // A visible or populated poll remains unsupported, even when collapsed.
+      if (ownedNodes(element, 'ytd-backstage-poll-renderer, ytd-poll-renderer')
+        .some(poll => poll.textContent.trim() || !poll.closest('[hidden], [aria-hidden="true"]'))) return null;
     } else if (!element.matches(commentSelector) || !element.closest('ytd-comments')) return null;
     const bodies = ownedNodes(element, textSelector).filter(body => !body.closest(excludedContext));
     if (bodies.length !== 1) return null;

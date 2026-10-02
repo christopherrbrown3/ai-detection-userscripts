@@ -75,8 +75,9 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
   });
 
   test('channel post text, quotes, comments and polls have separate boundaries', () => {
-    const html=posts(post('post',sample,post('quoted','This original belongs to another writer.'))+
+    const html=posts(post('post',sample,'<ytd-backstage-poll-renderer hidden></ytd-backstage-poll-renderer>'+post('quoted','This original belongs to another writer.'))+
       '<ytd-comments>'+comment('post-comment')+'</ytd-comments>'+post('poll',sample,'<ytd-backstage-poll-renderer>Option A Option B 50%</ytd-backstage-poll-renderer>')+
+      post('hidden-poll',sample,'<ytd-backstage-poll-renderer hidden>Option A Option B</ytd-backstage-poll-renderer>')+
       post('empty','','<img alt="Media-only post">')+post('ambiguous',sample,'<yt-attributed-string id="content-text">Another unmarked text owner.</yt-attributed-string>'));
     for(const path of ['/@example/posts','/@example/community','/channel/UCexample/posts','/c/example/community','/user/example/posts','/post/UgSynthetic']) {
       const window=load(html,path),document=window.document;
@@ -84,7 +85,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
       assert.equal(window.__controller.getAnalysis(document.getElementById('post')).sourceText,sample);
       assert.equal(window.__controller.getAnalysis(document.getElementById('post')).excluded.quotes,1);
       assert.equal(window.__controller.getAnalysis(document.getElementById('post-comment')).kind,'comment');
-      for(const id of ['quoted','poll','empty','ambiguous']) assert.equal(document.getElementById(id).querySelector('.ai-heuristic-badge'),null,id);
+      for(const id of ['quoted','poll','hidden-poll','empty','ambiguous']) assert.equal(document.getElementById(id).querySelector('.ai-heuristic-badge'),null,id);
       window.close();
     }
   });
@@ -108,6 +109,22 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     assert.ok(owner.querySelector('.ai-heuristic-badge'));
     setCheck(window,'Analyze comments and replies',true);
     await until(()=>document.querySelector('#late-reply .ai-heuristic-badge'));
+  });
+
+  test('recycled channel posts become unscored when the hidden poll placeholder is populated', async () => {
+    const window=load(posts(post('post',sample,'<ytd-backstage-poll-renderer hidden></ytd-backstage-poll-renderer>')),'/@example/posts');
+    const owner=window.document.getElementById('post'),poll=owner.querySelector('ytd-backstage-poll-renderer');
+    assert.ok(owner.querySelector('.ai-heuristic-badge'));
+    owner.querySelector('.ai-heuristic-badge').click();
+    poll.textContent='Option A Option B';
+    await until(()=>!owner.querySelector('.ai-heuristic-badge'));
+    assert.equal(window.document.querySelector('.ai-heuristic-popover'),null);
+    poll.textContent='';
+    await until(()=>owner.querySelector('.ai-heuristic-badge'));
+    poll.hidden=false;
+    await until(()=>!owner.querySelector('.ai-heuristic-badge'));
+    poll.hidden=true;
+    await until(()=>owner.querySelector('.ai-heuristic-badge'));
   });
 
   test('navigation clears stale text before URL/DOM updates and releases all navigation listeners on stop', async () => {
