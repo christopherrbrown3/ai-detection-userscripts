@@ -52,7 +52,8 @@ for (const distribution of ['combined', 'targeted']) {
 test('every declared host dispatches exactly one matching adapter', () => {
   for (const entry of registry().sites) for (const host of entry.hosts) {
     const hostname = host.replace('*.', 'news.');
-    const {window} = loadGeneratedDom(entry.id, loadFixture(entry.id + '.html'), 'https://' + hostname + '/', {setup(w) {
+    const path = entry.id === 'youtube' ? '/watch?v=video000001' : '/';
+    const {window} = loadGeneratedDom(entry.id, loadFixture(entry.id + '.html'), 'https://' + hostname + path, {setup(w) {
       w.localStorage.setItem('ai-heuristic:' + entry.id + ':settings:v2', JSON.stringify({enabled:true}));
     }});
     assert.equal(window.__lastSession.getStatus(), 'active');

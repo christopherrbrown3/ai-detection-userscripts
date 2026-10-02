@@ -2,6 +2,14 @@
 
 All notable changes are documented here.
 
+## 0.7.0 - 2026-10-02
+
+- Add an experimental, opt-in YouTube adapter and a generated YouTube-only script. The combined installation adds only `www.youtube.com` to its host permissions; existing targeted scripts keep their scopes and update identities.
+- Analyze creator descriptions, independently owned comments/replies, and recognized channel Posts/permalinks. Preserve authored formatting, quotation/code exclusions, and the compact **AI Score** badge with six bars. Exclude titles, recommendations, transcripts, credits, editors, live chat, Shorts, polls, and media analysis. Empty hidden poll placeholders on ordinary Posts are supported.
+- Clear badges and details when YouTube starts navigating, resume on its navigation-finish event, and require the watch container's video ID to match the URL. The shared runtime owns and releases the optional event listeners.
+- Keep YouTube settings in origin-local storage, disabled by default. Preserve shared detector rules, diagnostic models, sample/language states, and deferred diagnostics; no YouTube diagnostic model or authorship-probability claim is added.
+- Add source/combined/targeted regressions, isolated-browser CSP/coexistence checks, and bounded comment workloads. Record actual Safari/Userscripts coverage and remaining verification gaps in [YouTube validation](docs/youtube-validation.md).
+
 ## 0.6.2 - 2026-09-28
 
 - Simplify assessed badges to **AI Score** and the six bars, removing the redundant numeric cue-count label. Keep the exact count in details and accessible names, and preserve short-sample and unassessed language states.

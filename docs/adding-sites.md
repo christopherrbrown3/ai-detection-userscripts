@@ -12,13 +12,12 @@ Start with the [adapter template](../templates/platform-adapter.js) and [archite
 
 ## Planned integrations
 
-These sites are **not included in v0.6**. Each should ship as a separate adapter change after its fixtures and browser checks are ready. Facebook is now [experimental and opt-in](facebook-validation.md); live layout validation and stable promotion remain follow-up work.
+These sites are **not included in v0.7**. Each should ship as a separate adapter change after its fixtures and browser checks are ready. Facebook and YouTube are now experimental and opt-in; see their [Facebook](facebook-validation.md) and [YouTube](youtube-validation.md) validation reports for verified coverage and remaining gaps.
 
 | Site | Required discovery and coverage |
 | --- | --- |
 | Bluesky | Verify web hosts/routes; feed/profile/thread/replies, quote/repost ownership, rich-text links/mentions, embedded cards, recycled items |
 | Threads | Verify production domains/redirects; feed/profile/permalink/reply layouts, quoted/reposted text, expansion, supported login states, navigation |
 | Instagram | Written captions/comments/replies, carousel ownership, post dialogs and Reel text; exclude direct messages and audiovisual detection. [Issue #6](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/6) |
-| YouTube | Written descriptions/comments/replies and channel Posts, watch-page navigation and expansion; exclude transcripts, live chat, and audiovisual detection. [Issue #8](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/8) |
 
 Use [issue #2](https://github.com/christopherrbrown3/ai-detection-userscripts/issues/2) as the acceptance checklist. Sequence integrations according to access to representative pages and validation readiness.

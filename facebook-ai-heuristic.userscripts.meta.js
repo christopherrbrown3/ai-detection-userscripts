@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.2
+// @version      0.7.0
 // @description  Adds opt-in, local writing-style cues to supported Facebook desktop posts and comments.
 // @author       christopherrbrown3
 // @license      MIT

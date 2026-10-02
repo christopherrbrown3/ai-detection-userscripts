@@ -2,20 +2,17 @@
 // Installation and documentation: https://github.com/christopherrbrown3/ai-detection-userscripts
 
 // ==UserScript==
-// @name         LinkedIn AI-Style Signal (Local)
+// @name         YouTube AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
 // @version      0.7.0
-// @description  Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.
+// @description  Adds opt-in, local writing-style cues to YouTube descriptions, comments, replies, and channel Posts.
 // @author       christopherrbrown3
 // @license      MIT
 // @homepageURL  https://github.com/christopherrbrown3/ai-detection-userscripts
 // @supportURL   https://github.com/christopherrbrown3/ai-detection-userscripts/issues
-// @downloadURL  https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js
-// @updateURL    https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/linkedin-ai-heuristic.userscripts.user.js
-// @match        https://www.linkedin.com/*
-// @match        https://linkedin.com/*
-// @match        https://*.linkedin.com/*
-// @match        https://m.linkedin.com/*
+// @downloadURL  https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/youtube-ai-heuristic.userscripts.user.js
+// @updateURL    https://raw.githubusercontent.com/christopherrbrown3/ai-detection-userscripts/main/youtube-ai-heuristic.userscripts.user.js
+// @match        https://www.youtube.com/*
 // @run-at       document-idle
 // @inject-into  content
 // @grant        none
@@ -2186,128 +2183,118 @@ function bootAIHeuristic(registry, factories, models, release) {
 }
 
   const factories = {
-"linkedin": function () {
+"youtube": function () {
 function createPlatformAdapter() {
   'use strict';
 
-  const feedChildSelector = '[data-testid="mainFeed"] > div';
-  const modernPostSelector = '[role="listitem"]:has([data-testid="expandable-text-box"])';
-  const cardSelector = [
-    modernPostSelector,
-    'div.feed-shared-update-v2',
-    'article[data-urn*="urn:li:activity"]',
-    'main article[data-id*="urn:li:activity"]'
-  ].join(', ');
-  const postSelector = feedChildSelector + ', ' + cardSelector;
-  const commentSelector = [
-    'li.comments-comment-item',
-    'div.comments-comment-item',
-    'article.comments-comment-item',
-    'div.comments-comments-list__comment-item',
-    'div.comments-comment-entity',
-    'li.update-components-comment',
-    'div.update-components-comment'
-  ].join(', ');
-  const postTextSelector = [
-    '[data-testid="expandable-text-box"]',
-    'div.feed-shared-inline-show-more-text',
-    'div.update-components-text-view',
-    'div.update-components-update-v2__commentary',
-    'div.update-components-text',
-    'div.feed-shared-update-v2__description',
-    'div.feed-shared-update-v2__commentary',
-    '[data-test-id="main-feed-activity-card__commentary"]'
-  ].join(', ');
-  const commentTextSelector = [
-    'span.comments-comment-item__main-content',
-    'div.comments-comment-item__main-content',
-    'div.comments-comment-entity__text',
-    'span.comments-comment-entity__text',
-    'span.update-components-comment__text',
-    'div.update-components-comment__text'
-  ].join(', ');
+  const descriptionSelector = 'ytd-watch-metadata';
+  const postSelector = 'ytd-backstage-post-renderer';
+  const commentSelector = 'ytd-comment-view-model, ytd-comment-renderer';
+  const ownerSelector = descriptionSelector + ', ' + postSelector + ', ' + commentSelector;
+  const excludedContext = '[hidden], [aria-hidden="true"], [contenteditable]:not([contenteditable="false"]), ' +
+    'form, [role="textbox"], #translated-content, ytd-commentbox, ytd-backstage-post-dialog-renderer, ' +
+    'ytd-reel-video-renderer, ytd-shorts, ytd-live-chat-frame, yt-live-chat-renderer, ' +
+    'ytd-transcript-renderer, ytd-transcript-search-panel-renderer, ytd-video-description-transcript-section-renderer, ' +
+    'ytd-metadata-row-container-renderer, ytd-rich-metadata-row-renderer, ytd-video-description-infocards-section-renderer, ' +
+    'ytd-compact-video-renderer, ytd-video-renderer, ytd-rich-grid-media, ytd-miniplayer';
+  const textSelector = 'yt-attributed-string#content-text, yt-formatted-string#content-text';
 
-  function linkedinTextContent(node) {
-    // The DOM walk includes text hidden only by visual line clamping.
-    return aiHeuristicTextContent(node);
+  function route(url) {
+    if (url.pathname === '/watch' && /^[\w-]+$/.test(url.searchParams.get('v') || '')) return 'watch';
+    if (/^\/post\/[\w-]+\/?$/.test(url.pathname)) return 'post';
+    if (/^\/(?:@[^/]+|(?:channel|c|user)\/[^/]+)\/(?:posts|community)\/?$/.test(url.pathname)) return 'posts';
+    return null;
   }
 
-  function bestOwnedText(root, selector, kind) {
-    let best = { text: '', excluded: { quotes: 0, code: 0 }, host: null };
-    root.querySelectorAll(selector).forEach((candidate) => {
-      if (kind === 'post' && candidate.closest(commentSelector)) return;
-      if (kind === 'comment' && candidate.closest(commentSelector) !== root) return;
-      if (candidate.closest('blockquote, pre, code, .update-components-mini-update-v2')) return;
-      const content = aiHeuristicReadContent(candidate);
-      if (content.text.length > best.text.length || (!best.host && content.excluded.quotes + content.excluded.code)) {
-        best = { ...content, host: candidate };
-      }
-    });
-    if (!best.host && kind === 'post') {
-      const fallback = findPostTextHost(root);
-      if (fallback) best = { ...aiHeuristicReadContent(fallback), host: fallback };
+  function allowed(element) {
+    const page = route(new URL(location.href));
+    if (!page || element.closest(excludedContext)) return false;
+    const quote = element.parentElement?.closest(postSelector);
+    if (quote && (element.matches(postSelector) || quote.parentElement?.closest(postSelector))) return false;
+    if (element.closest('blockquote, q')) return false;
+    if (page === 'watch') {
+      const watch = element.closest('ytd-watch-flexy');
+      // YouTube retains the old page during client-side navigation. Never
+      // assign its text to a different video while the new page is loading.
+      return Boolean(watch && watch.getAttribute('video-id') === new URL(location.href).searchParams.get('v'));
     }
-    return best;
+    return Boolean(element.closest('ytd-browse'));
   }
 
-  function findPostTextHost(root) {
-    const direct = Array.from(root.querySelectorAll(postTextSelector))
-      .filter((candidate) => !candidate.closest(commentSelector) && !candidate.closest('blockquote, pre, code, .update-components-mini-update-v2'))
-      .sort((left, right) => linkedinTextContent(right).length - linkedinTextContent(left).length)[0];
-    if (direct) return direct;
+  function ownedNodes(element, selector) {
+    return [...element.querySelectorAll(selector)].filter(node => node.closest(ownerSelector) === element);
+  }
 
-    // LinkedIn periodically replaces semantic commentary classes with generated ones,
-    // especially in profile activity and search views. Choose the largest text-focused
-    // descendant while excluding actor, engagement, comment, and action containers.
-    return Array.from(root.querySelectorAll('div, span'))
-      .filter((candidate) => {
-        if (candidate.closest(commentSelector)) return false;
-        if (candidate.closest('blockquote, pre, code, .update-components-mini-update-v2')) return false;
-        if (candidate.closest('.update-components-actor__container, .feed-shared-actor__container')) return false;
-        if (candidate.closest('.social-details-social-counts, .feed-shared-social-action-bar')) return false;
-        const text = linkedinTextContent(candidate);
-        return text.length >= 40 && candidate.querySelectorAll('button, [role="button"]').length <= 1;
-      })
-      .sort((left, right) => linkedinTextContent(right).length - linkedinTextContent(left).length)[0] || null;
+  function descriptionBody(element) {
+    if (route(new URL(location.href)) !== 'watch') return null;
+    const expanders = ownedNodes(element, 'ytd-text-inline-expander#description-inline-expander');
+    if (expanders.length !== 1) return null;
+    const expander = expanders[0];
+    // Prefer the full author body if it is already rendered, even when the
+    // expander clips it. Do not read extra-content slots (credits/transcripts).
+    const full = [...expander.querySelectorAll('#expanded yt-attributed-string')]
+      .filter(node => node.closest('ytd-text-inline-expander') === expander && node.textContent.trim());
+    const snippet = [...expander.querySelectorAll('yt-attributed-string#attributed-snippet-text')]
+      .filter(node => node.closest('ytd-text-inline-expander') === expander && node.textContent.trim());
+    const bodies = full.length ? full : snippet;
+    return bodies.length === 1 ? { body: bodies[0], host: expander } : null;
+  }
+
+  function bodyFor(element, kind) {
+    if (!allowed(element)) return null;
+    if (element.matches(descriptionSelector)) return kind === 'post' ? descriptionBody(element) : null;
+    if (element.matches(postSelector)) {
+      if (!['post', 'posts'].includes(route(new URL(location.href)))) return null;
+      // Ordinary Posts include an empty hidden poll placeholder in live markup.
+      // A visible or populated poll remains unsupported, even when collapsed.
+      if (ownedNodes(element, 'ytd-backstage-poll-renderer, ytd-poll-renderer')
+        .some(poll => poll.textContent.trim() || !poll.closest('[hidden], [aria-hidden="true"]'))) return null;
+    } else if (!element.matches(commentSelector) || !element.closest('ytd-comments')) return null;
+    const bodies = ownedNodes(element, textSelector).filter(body => !body.closest(excludedContext));
+    if (bodies.length !== 1) return null;
+    const body = bodies[0], expander = body.closest('ytd-expander, ytd-text-inline-expander');
+    return { body, host: expander && element.contains(expander) ? expander : body };
+  }
+
+  function readBody(body) {
+    const copy = body.cloneNode(true);
+    copy.style.whiteSpace = window.getComputedStyle(body).whiteSpace;
+    // Author rich text is inline HTML. Unknown custom widgets, translated
+    // panels, hidden helper labels and controls must not become prose.
+    copy.querySelectorAll(excludedContext).forEach(node => node.remove());
+    copy.querySelectorAll('*').forEach(node => {
+      if (node.localName.includes('-') && !['yt-attributed-string', 'yt-formatted-string'].includes(node.localName)) node.remove();
+    });
+    return aiHeuristicReadContent(copy);
   }
 
   return {
-    id: 'linkedin',
-    name: 'LinkedIn',
-    observedAttributes: ['data-urn', 'data-id'],
-    postSelector,
+    id: 'youtube',
+    name: 'YouTube',
+    postSelector: descriptionSelector + ', ' + postSelector,
     commentSelector,
-    isTopLevel(element, kind) {
-      if (kind === 'comment') return true;
-      // Current feeds put visible list-item cards inside display:contents
-      // wrappers. Observe the cards, since those wrappers have no viewport box.
-      if (element.matches(feedChildSelector) && !element.matches(cardSelector) && element.querySelector(cardSelector)) return false;
-      const ownershipSelector = element.matches(cardSelector) ? cardSelector : postSelector;
-      const parentPost = element.parentElement && element.parentElement.closest(ownershipSelector);
-      return !parentPost && !element.closest(commentSelector);
-    },
+    observedAttributes: ['id', 'hidden', 'aria-hidden', 'video-id', 'contenteditable'],
+    navigationEvents: { start: 'yt-navigate-start', finish: 'yt-navigate-finish' },
+    supportsUrl(url) { return Boolean(route(url)); },
+    isTopLevel(element, kind) { return Boolean(bodyFor(element, kind)); },
     extractContent(element, kind) {
-      return bestOwnedText(element, kind === 'comment' ? commentTextSelector : postTextSelector, kind);
+      const owned = bodyFor(element, kind);
+      if (!owned) return null;
+      const content = readBody(owned.body);
+      if (element.matches(postSelector)) {
+        content.excluded.quotes += [...element.querySelectorAll(postSelector)]
+          .filter(quote => quote.parentElement?.closest(postSelector) === element).length;
+      }
+      return { ...content, host: owned.host };
     },
     placeBadge(element, badge, kind, content) {
-      if (kind === 'comment') {
-        const textHost = element.querySelector(commentTextSelector);
-        if (textHost && textHost.parentElement) {
-          textHost.parentElement.insertBefore(badge, textHost);
-          return;
-        }
-      }
-      const textHost = content && content.host || findPostTextHost(element);
-      if (textHost && textHost.parentElement) {
-        textHost.parentElement.insertBefore(badge, textHost.nextSibling);
-        return;
-      }
-      element.insertBefore(badge, element.firstChild);
+      if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');
+      content.host.insertAdjacentElement('afterend', badge);
     }
   };
 }
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.7.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.7.0",distribution:"targeted"});
 })();

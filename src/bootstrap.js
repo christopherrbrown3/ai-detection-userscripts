@@ -15,6 +15,7 @@
  * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
  * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
  * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
+ * @property {{start: string, finish: string}} [navigationEvents] Document events bracketing SPA page replacement.
  * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
  * to the runtime. Null/empty extraction removes a previously attached badge.
  */
@@ -42,6 +43,12 @@ function validateAIAdapter(adapter, entry) {
   if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
     adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {
     throw new Error('Invalid observed attributes');
+  }
+  if (adapter.navigationEvents !== undefined) {
+    const events = adapter.navigationEvents;
+    if (!events || !['start', 'finish'].every(key => typeof events[key] === 'string' && /^[a-z][a-z0-9-]*$/.test(events[key])) || events.start === events.finish) {
+      throw new Error('Invalid navigation events');
+    }
   }
   return adapter;
 }

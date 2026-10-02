@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.6.2
+// @version      0.7.0
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
@@ -26,6 +26,7 @@
 // @match        https://www.old.reddit.com/*
 // @match        https://www.facebook.com/*
 // @match        https://facebook.com/*
+// @match        https://www.youtube.com/*
 // @run-at       document-idle
 // @inject-into  content
 // @grant        GM.getValue
@@ -933,6 +934,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   let routeTimer = null;
   let bodyReference = null;
   let lastUrl = location.href;
+  let navigationPending = false;
   const reportedFailures = new Set();
   const engine = createDetectorEngine({ platform: adapter.id, modelBundle });
   const storageKey = `ai-heuristic:${adapter.id}:settings:v2`;
@@ -1892,7 +1894,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     catch (_) { reportFailure('route'); return false; }
   }
 
-  function analysisAllowed() { return !settingsPending && settings.enabled && !legacyBlocked && routeSupported(); }
+  function analysisAllowed() { return !settingsPending && !navigationPending && settings.enabled && !legacyBlocked && routeSupported(); }
 
   function suspendAnalysis() {
     running = false;
@@ -1927,6 +1929,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function checkLocation() {
     if (location.href !== lastUrl || document.body !== bodyReference) refreshState(true);
+  }
+
+  function onNavigationStart() {
+    navigationPending = true;
+    refreshState(true);
+  }
+
+  function onNavigationFinish() {
+    navigationPending = false;
+    refreshState(true);
   }
 
   function onDocumentClick(event) {
@@ -1975,6 +1987,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       window.addEventListener('popstate', checkLocation);
       window.addEventListener('hashchange', checkLocation);
       window.addEventListener('pageshow', checkLocation);
+      if (adapter.navigationEvents) {
+        document.addEventListener(adapter.navigationEvents.start, onNavigationStart);
+        document.addEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+      }
       refreshState();
       document.addEventListener('click', onDocumentClick, true);
       document.addEventListener('keydown', onKeydown);
@@ -2000,6 +2016,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     window.removeEventListener('popstate', checkLocation);
     window.removeEventListener('hashchange', checkLocation);
     window.removeEventListener('pageshow', checkLocation);
+    if (adapter.navigationEvents) {
+      document.removeEventListener(adapter.navigationEvents.start, onNavigationStart);
+      document.removeEventListener(adapter.navigationEvents.finish, onNavigationFinish);
+    }
     document.querySelectorAll('style' + owned + ', .ai-heuristic-launcher' + owned).forEach((node) => node.remove());
     if (options.onStop) options.onStop();
   }
@@ -2034,6 +2054,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
  * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
  * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
  * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
+ * @property {{start: string, finish: string}} [navigationEvents] Document events bracketing SPA page replacement.
  * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
  * to the runtime. Null/empty extraction removes a previously attached badge.
  */
@@ -2061,6 +2082,12 @@ function validateAIAdapter(adapter, entry) {
   if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
     adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {
     throw new Error('Invalid observed attributes');
+  }
+  if (adapter.navigationEvents !== undefined) {
+    const events = adapter.navigationEvents;
+    if (!events || !['start', 'finish'].every(key => typeof events[key] === 'string' && /^[a-z][a-z0-9-]*$/.test(events[key])) || events.start === events.finish) {
+      throw new Error('Invalid navigation events');
+    }
   }
   return adapter;
 }
@@ -2621,7 +2648,119 @@ function createPlatformAdapter() {
   };
 }
 return createPlatformAdapter();
+},
+"youtube": function () {
+function createPlatformAdapter() {
+  'use strict';
+
+  const descriptionSelector = 'ytd-watch-metadata';
+  const postSelector = 'ytd-backstage-post-renderer';
+  const commentSelector = 'ytd-comment-view-model, ytd-comment-renderer';
+  const ownerSelector = descriptionSelector + ', ' + postSelector + ', ' + commentSelector;
+  const excludedContext = '[hidden], [aria-hidden="true"], [contenteditable]:not([contenteditable="false"]), ' +
+    'form, [role="textbox"], #translated-content, ytd-commentbox, ytd-backstage-post-dialog-renderer, ' +
+    'ytd-reel-video-renderer, ytd-shorts, ytd-live-chat-frame, yt-live-chat-renderer, ' +
+    'ytd-transcript-renderer, ytd-transcript-search-panel-renderer, ytd-video-description-transcript-section-renderer, ' +
+    'ytd-metadata-row-container-renderer, ytd-rich-metadata-row-renderer, ytd-video-description-infocards-section-renderer, ' +
+    'ytd-compact-video-renderer, ytd-video-renderer, ytd-rich-grid-media, ytd-miniplayer';
+  const textSelector = 'yt-attributed-string#content-text, yt-formatted-string#content-text';
+
+  function route(url) {
+    if (url.pathname === '/watch' && /^[\w-]+$/.test(url.searchParams.get('v') || '')) return 'watch';
+    if (/^\/post\/[\w-]+\/?$/.test(url.pathname)) return 'post';
+    if (/^\/(?:@[^/]+|(?:channel|c|user)\/[^/]+)\/(?:posts|community)\/?$/.test(url.pathname)) return 'posts';
+    return null;
+  }
+
+  function allowed(element) {
+    const page = route(new URL(location.href));
+    if (!page || element.closest(excludedContext)) return false;
+    const quote = element.parentElement?.closest(postSelector);
+    if (quote && (element.matches(postSelector) || quote.parentElement?.closest(postSelector))) return false;
+    if (element.closest('blockquote, q')) return false;
+    if (page === 'watch') {
+      const watch = element.closest('ytd-watch-flexy');
+      // YouTube retains the old page during client-side navigation. Never
+      // assign its text to a different video while the new page is loading.
+      return Boolean(watch && watch.getAttribute('video-id') === new URL(location.href).searchParams.get('v'));
+    }
+    return Boolean(element.closest('ytd-browse'));
+  }
+
+  function ownedNodes(element, selector) {
+    return [...element.querySelectorAll(selector)].filter(node => node.closest(ownerSelector) === element);
+  }
+
+  function descriptionBody(element) {
+    if (route(new URL(location.href)) !== 'watch') return null;
+    const expanders = ownedNodes(element, 'ytd-text-inline-expander#description-inline-expander');
+    if (expanders.length !== 1) return null;
+    const expander = expanders[0];
+    // Prefer the full author body if it is already rendered, even when the
+    // expander clips it. Do not read extra-content slots (credits/transcripts).
+    const full = [...expander.querySelectorAll('#expanded yt-attributed-string')]
+      .filter(node => node.closest('ytd-text-inline-expander') === expander && node.textContent.trim());
+    const snippet = [...expander.querySelectorAll('yt-attributed-string#attributed-snippet-text')]
+      .filter(node => node.closest('ytd-text-inline-expander') === expander && node.textContent.trim());
+    const bodies = full.length ? full : snippet;
+    return bodies.length === 1 ? { body: bodies[0], host: expander } : null;
+  }
+
+  function bodyFor(element, kind) {
+    if (!allowed(element)) return null;
+    if (element.matches(descriptionSelector)) return kind === 'post' ? descriptionBody(element) : null;
+    if (element.matches(postSelector)) {
+      if (!['post', 'posts'].includes(route(new URL(location.href)))) return null;
+      // Ordinary Posts include an empty hidden poll placeholder in live markup.
+      // A visible or populated poll remains unsupported, even when collapsed.
+      if (ownedNodes(element, 'ytd-backstage-poll-renderer, ytd-poll-renderer')
+        .some(poll => poll.textContent.trim() || !poll.closest('[hidden], [aria-hidden="true"]'))) return null;
+    } else if (!element.matches(commentSelector) || !element.closest('ytd-comments')) return null;
+    const bodies = ownedNodes(element, textSelector).filter(body => !body.closest(excludedContext));
+    if (bodies.length !== 1) return null;
+    const body = bodies[0], expander = body.closest('ytd-expander, ytd-text-inline-expander');
+    return { body, host: expander && element.contains(expander) ? expander : body };
+  }
+
+  function readBody(body) {
+    const copy = body.cloneNode(true);
+    copy.style.whiteSpace = window.getComputedStyle(body).whiteSpace;
+    // Author rich text is inline HTML. Unknown custom widgets, translated
+    // panels, hidden helper labels and controls must not become prose.
+    copy.querySelectorAll(excludedContext).forEach(node => node.remove());
+    copy.querySelectorAll('*').forEach(node => {
+      if (node.localName.includes('-') && !['yt-attributed-string', 'yt-formatted-string'].includes(node.localName)) node.remove();
+    });
+    return aiHeuristicReadContent(copy);
+  }
+
+  return {
+    id: 'youtube',
+    name: 'YouTube',
+    postSelector: descriptionSelector + ', ' + postSelector,
+    commentSelector,
+    observedAttributes: ['id', 'hidden', 'aria-hidden', 'video-id', 'contenteditable'],
+    navigationEvents: { start: 'yt-navigate-start', finish: 'yt-navigate-finish' },
+    supportsUrl(url) { return Boolean(route(url)); },
+    isTopLevel(element, kind) { return Boolean(bodyFor(element, kind)); },
+    extractContent(element, kind) {
+      const owned = bodyFor(element, kind);
+      if (!owned) return null;
+      const content = readBody(owned.body);
+      if (element.matches(postSelector)) {
+        content.excluded.quotes += [...element.querySelectorAll(postSelector)]
+          .filter(quote => quote.parentElement?.closest(postSelector) === element).length;
+      }
+      return { ...content, host: owned.host };
+    },
+    placeBadge(element, badge, kind, content) {
+      if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');
+      content.host.insertAdjacentElement('afterend', badge);
+    }
+  };
+}
+return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.6.2",distribution:"combined"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"},{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.7.0",distribution:"combined"});
 })();

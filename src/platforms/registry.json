@@ -120,6 +120,36 @@
         "/videos",
         "/search"
       ]
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "module": "youtube.js",
+      "scriptName": "YouTube AI-Style Cues (Local)",
+      "description": "Adds opt-in, local writing-style cues to YouTube descriptions, comments, replies, and channel Posts.",
+      "output": "youtube-ai-heuristic.userscripts.user.js",
+      "hosts": [
+        "www.youtube.com"
+      ],
+      "status": "experimental",
+      "capabilities": [
+        "desktop watch descriptions (fixtures + Safari)",
+        "comments and replies (fixtures + Safari)",
+        "channel Posts and post permalinks (fixtures + Safari)"
+      ],
+      "excludedPaths": [
+        "/shorts",
+        "/live_chat",
+        "/live_chat_replay",
+        "/embed",
+        "/results",
+        "/feed",
+        "/playlist",
+        "/account",
+        "/premium",
+        "/gaming",
+        "/clip"
+      ]
     }
   ]
 }

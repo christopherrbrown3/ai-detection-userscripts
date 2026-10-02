@@ -51,8 +51,9 @@ The JSDoc contract lives in `src/bootstrap.js`. A factory must be side-effect-fr
 - `placeBadge(element, badge, kind, content)`: attaches the provided badge without modifying source text or taking over other cards.
 - Optional `observedAttributes`: candidate-affecting attribute names in addition to `lang`, `class`, `role`, `data-testid`, and `slot`.
 - Optional `supportsUrl(URL)`: additional route eligibility, combined with registry exclusions.
+- Optional `navigationEvents: {start, finish}`: distinct document event names that bracket site navigation. The runtime clears analysis on start and rescans eligible content on finish. YouTube uses `yt-navigate-start` and `yt-navigate-finish`, with an additional video identity guard in extraction.
 
-There is no arbitrary lifecycle hook yet: existing integrations need only route eligibility and observed attributes. If a later integration needs additional resources, extend the runtime-owned contract with explicit cleanup and tests before adding hooks. Adapters must not fork detector rules, scheduling, settings, or UI.
+There is no arbitrary lifecycle hook: the runtime owns and releases both optional navigation listeners. If a later integration needs other resources, extend the runtime-owned contract with explicit cleanup and tests before adding hooks. Adapters must not fork detector rules, scheduling, settings, or UI.
 
 Invalid adapters fail before runtime startup. Candidate extraction/placement failures remove stale/partial UI, log one content-free warning per phase, and allow the queue to continue. Partial startup resources are released on failure.
 
