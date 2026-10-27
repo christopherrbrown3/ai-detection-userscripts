@@ -127,6 +127,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 text=True,
             )
             weights = json.loads((output_dir / "weights.json").read_text(encoding="utf-8"))
+            self.assertEqual(weights["feature_set"], "stylometry-v4-charhash128")
             report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
             model = weights["models"]["x:post"]
             self.assertEqual(len(model["charNgramWeights"]), 128)
@@ -180,7 +181,18 @@ class TrainingPipelineTests(unittest.TestCase):
             )
             exported = json.loads(bundle_path.read_text(encoding="utf-8"))
             self.assertTrue(exported["metadata"]["calibrated"])
+            self.assertEqual(exported["metadata"]["feature_set"], weights["feature_set"])
             self.assertIn("strong", exported["models"]["x:post"]["thresholds"])
+
+            weights.pop("feature_set")
+            stale_path = Path(temporary) / "stale-weights.json"
+            stale_path.write_text(json.dumps(weights), encoding="utf-8")
+            rejected = subprocess.run(
+                [sys.executable, "-m", "training.export_js", str(stale_path), "--model", "x:post"],
+                cwd=root, capture_output=True, text=True,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("Incompatible or unversioned feature set", rejected.stderr)
 
 
 if __name__ == "__main__":

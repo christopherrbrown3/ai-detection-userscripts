@@ -2,6 +2,8 @@
 
 Reviewed 2026-09-28 following reports of LinkedIn scores clustering at 0 and 17 and badges overflowing. This audit distinguishes rule correctness, extraction correctness, and authorship accuracy. Only the first two can be checked with unlabeled browser examples. The 0.6.1 changes repair the display and document detection limitations; they do not change the detector or claim improved authorship accuracy.
 
+This is the historical 0.6.1 audit. Version 0.8.0 subsequently expanded selected phrase, opening, and list-marker coverage and corrected the AI-job-title example. The original comparison below is preserved for context; see [sensitivity validation](sensitivity-validation.md) for the new behavior and its evidence limits.
+
 ## What changed, and why the numbers cluster
 
 | Release | Active behavior |
@@ -34,11 +36,11 @@ The four local PDFs were read, including methods rather than only their summarie
 | [MultiSocial, ACL 2025](https://aclanthology.org/2025.acl-long.36/) | Social-text benchmarking where platform selection during training matters. | Test on platform-matched data; its results do not validate LinkedIn. Follow the dataset's access terms. |
 | [EvoBench, ACL 2025](https://aclanthology.org/2025.findings-acl.754/) | Detection degrades across evolving model versions. | Hold out generators and time/version cohorts, not just random rows. |
 
-## Exact status of the six families
+## Status of the six families in 0.6.1
 
 All exact phrase lists, numerical cutoffs, and the equal count are **project heuristics**. No reviewed paper establishes their calibrated predictive value or statistical independence.
 
-| Family | Current trigger, after exclusions/language eligibility | Evidence status / concern |
+| Family | 0.6.1 trigger, after exclusions/language eligibility | Evidence status / concern |
 | --- | --- | --- |
 | Model reference | A phrase such as `as an ai` | Direct wording only, not an authorship determination. The prefix also matches an AI job title: a known descriptor defect. |
 | Stock framing | At least two distinct framing phrases, or one plus two promotional terms | Hand-built phrase lists. Contractions, omitted subjects, and newer wording can change matches. One common phrase is deliberately insufficient. |
@@ -57,9 +59,9 @@ Run:
 node scripts/audit_cue_coverage.mjs --baseline-ref 1d91785
 ```
 
-Inputs and questions are in `tests/fixtures/cue-audit.json`; [recorded results](cue-coverage-audit.json) include source hashes and the historical comparison. The examples are authored synthetic probes with **no human/AI ground-truth labels**. Their counts cannot estimate precision, recall, or a real feed's score distribution.
+The original inputs and results are preserved in [the recorded audit](cue-coverage-audit.json), including source hashes and the historical comparison. The fixture has since gained additional 0.8.0 probes. These are authored synthetic examples with **no human/AI ground-truth labels**. Their counts cannot estimate precision, recall, or a real feed's score distribution.
 
-| Probe | Current result | Interpretation |
+| Probe | 0.6.1 result | Interpretation at the time |
 | --- | --- | --- |
 | `Here are` alone versus `Here are the key takeaways` | 0 versus 1 family | Combination threshold explains some zeros. |
 | `I'm excited to share` versus `Excited to share`, same two promotional terms | 1 versus 0 | Exact-phrase coverage gap. |

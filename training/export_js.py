@@ -5,6 +5,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+try:
+    from training.features import FEATURE_SET
+except ModuleNotFoundError:
+    from features import FEATURE_SET
+
 
 def load_json(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
@@ -27,6 +32,8 @@ def main() -> None:
     args = parser.parse_args()
 
     data = load_json(args.weights_json)
+    if data.get("feature_set") != FEATURE_SET:
+        raise SystemExit(f"Incompatible or unversioned feature set. Retrain using {FEATURE_SET} before export.")
     models = data.get("models")
     if not isinstance(models, dict) or not models:
         raise SystemExit("weights.json does not contain a non-empty 'models' object.")
@@ -56,7 +63,7 @@ def main() -> None:
         bundle["metadata"].update({
             "calibrated": True,
             "provenance": f"Offline-trained with held-out sigmoid calibration and human-score thresholding; source {Path(args.weights_json).name}.",
-            "feature_set": "stylometry-v3-charhash128",
+            "feature_set": FEATURE_SET,
         })
         bundle["models"][key] = model
         path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8")

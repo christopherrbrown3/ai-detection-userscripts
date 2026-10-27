@@ -2,6 +2,13 @@
 
 All notable changes are documented here.
 
+## 0.8.0 - 2026-10-27
+
+- Recognize more stock-framing variants, three repeated function-word openings, and arrow/checkmark list markers. Keep combined-phrase thresholds, short-sample warnings, quote/code exclusions, and list/prose separation.
+- Distinguish explicit model references from AI job titles. Update the matching diagnostic features and require newly trained weights to declare the revised feature set before export.
+- Refine the compact badge, details panel, excerpt presentation, and settings; keep the close control visible while the panel scrolls and improve narrow-screen and host-style resilience.
+- Compare synthetic cue probes with 0.7.0 and document the results without an accuracy claim. The patterns remain heuristics that can match human writing and miss generated text.
+
 ## 0.7.0 - 2026-10-02
 
 - Add an experimental, opt-in YouTube adapter and a generated YouTube-only script. The combined installation adds only `www.youtube.com` to its host permissions; existing targeted scripts keep their scopes and update identities.

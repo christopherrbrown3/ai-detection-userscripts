@@ -4,7 +4,7 @@ The installed userscripts never download a model or transmit text. This director
 
 ## Feature compatibility
 
-Userscript 0.4 uses the `stylometry-v3-charhash128` diagnostic feature set. Sentence boundaries, quotation/code masking, and model-reference phrases now mirror the browser parser. Previous learned weights require retraining and held-out validation against these changed feature definitions before release. The shipped weights remain an uncalibrated diagnostic baseline; this release adds no trained classifier or new benchmark accuracy claim.
+Userscript 0.8 uses the `stylometry-v4-charhash128` diagnostic feature set. Model-reference and list-marker features now mirror the revised browser rules. Previous learned weights require retraining and held-out validation against these changed feature definitions before release. Training output records its feature-set version, and the exporter rejects older or unversioned weights. The shipped hand-tuned weights remain an uncalibrated diagnostic baseline; this release adds no trained classifier or benchmark accuracy claim.
 
 ## Install
 

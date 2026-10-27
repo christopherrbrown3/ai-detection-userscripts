@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         Facebook AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.7.0
+// @version      0.8.0
 // @description  Adds opt-in, local writing-style cues to supported Facebook desktop posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -31,7 +31,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'browser-cues-v3';
+  const ANALYSIS_VERSION = 'browser-cues-v4';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -51,10 +51,6 @@ function createDetectorEngine(options) {
       'scalable', 'robust', 'strategic', 'amazing', 'incredible', 'excited to announce',
       'thrilled to', 'grateful for', 'honored to', 'humble', 'delighted to share', 'proud to'
     ],
-    hedge: [
-      'as an ai', 'as a language model', 'as an artificial intelligence',
-      'i am an ai', "i'm an ai", 'i am a language model'
-    ],
     transition: [
       'in conclusion', 'overall', 'to sum up', 'moreover', 'furthermore', 'additionally',
       'in addition', 'on the other hand', 'as a result', 'in summary', 'it is important to',
@@ -73,6 +69,20 @@ function createDetectorEngine(options) {
       'make no mistake', "it's not about", "this isn't about", 'the question is'
     ]
   };
+
+  // Cue-only framing additions do not change the diagnostic model vocabulary.
+  const FRAMING_CUES = [
+    'the real question is', 'the real challenge is', 'the real magic',
+    'here is the truth', "here's the truth", 'the answer is simple',
+    'a powerful reminder', 'a testament to',
+    'in a world where', "in today's fast-paced world", 'in an ever-changing world',
+    'at its core', 'the key takeaway', 'the key to success', 'it all comes down to',
+    'excited to share', 'game changer', 'unlock the power', 'unlock your potential', 'take it to the next level',
+    'redefining the way', 'the possibilities are endless'
+  ];
+
+  const LIST_MARKER = /^(?:[ \t]*)(?:[-*•→➜➔►▸✓✔☑✅]\uFE0F?|\d+[.)])[ \t]+/;
+  const MODEL_REFERENCE = /(?:^|[^\p{L}\p{N}])((?:as an ai(?: language model| assistant)?|as a language model|as an artificial intelligence|i am an ai(?: language model| assistant)?|i'm an ai(?: language model| assistant)?|i am a language model))(?=$|[ \t]*(?:[,;:!?.]|\b(?:i|and|but|can|cannot|do|don't|will|am|was|that|designed|trained)\b))/giu;
 
   const FEATURE_NAMES = {
     aiHedgePresent: 'AI self-disclosure',
@@ -179,7 +189,7 @@ function createDetectorEngine(options) {
         sentences.push({
           text: trimmed, start: offset, end: offset + trimmed.length, tokens,
           length: tokens.length,
-          isList: /^\s*(?:[-*•]|\d+[.)])\s+/.test(masked.slice(lineStart))
+          isList: LIST_MARKER.test(masked.slice(lineStart))
         });
       }
       start = end;
@@ -223,6 +233,14 @@ function createDetectorEngine(options) {
       spans.push({ word: normalizeApostrophes(match[0]).toLowerCase(), start: sentence.start + match.index, end: sentence.start + match.index + match[0].length });
     }
     return spans;
+  }
+
+  function modelReferenceSpans(parsed) {
+    const normalized = normalizeApostrophes(parsed.masked);
+    return Array.from(normalized.matchAll(MODEL_REFERENCE), (match) => {
+      const start = match.index + match[0].length - match[1].length;
+      return { start, end: start + match[1].length };
+    }).filter(({ start, end }) => !parsed.excluded.some((span) => start < span.end && end > span.start));
   }
 
   function mean(values) {
@@ -314,12 +332,12 @@ function createDetectorEngine(options) {
     }
 
     if (assessed) {
-      const references = phraseSpans(parsed, PHRASES.hedge);
+      const references = modelReferenceSpans(parsed);
       if (references.length) {
         add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
       }
 
-      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical]);
+      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES]);
       const buzz = phraseSpans(parsed, PHRASES.buzz);
       // One everyday phrase or promotional adjective is too little to flag.
       const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
@@ -334,7 +352,6 @@ function createDetectorEngine(options) {
       for (const tokens of proseTokens) {
         if (tokens.length < 2) continue;
         const first = tokens.slice(0, 2);
-        if (first.every((token) => STOPWORDS.has(token.word))) continue;
         if (parsed.excluded.some((span) => first[0].start < span.end && first[1].end > span.start)) continue;
         const key = first.map((token) => token.word).join(' ');
         if (!openingGroups.has(key)) openingGroups.set(key, []);
@@ -350,16 +367,26 @@ function createDetectorEngine(options) {
           !parsed.excluded.some((span) => tokens[0].start < span.end && tokens[sharedLength].end > span.start))) sharedLength += 1;
         spans.forEach((span, index) => { span.end = groups[index][sharedLength - 1].end; });
       }
-      const openingSpans = repeatedOpenings.flat();
+      // Common function-word starts need three occurrences and a shared third
+      // word; two instances of "it is" alone are ordinary prose.
+      const openingSpans = repeatedOpenings.filter((spans) => {
+        const tokens = tokenize(raw.slice(spans[0].start, spans[0].end));
+        return !tokens.slice(0, 2).every((word) => STOPWORDS.has(word)) ||
+          (spans.length >= 3 && tokens.length >= 3);
+      }).flat();
       if (prose.length >= 3 && openingSpans.length) {
         add('repeated-openings', 'Repeated sentence openings',
           openingSpans.length + ' of ' + prose.length + ' prose sentences reuse a multiword opening.', openingSpans);
       }
 
-      const listSpans = Array.from(raw.matchAll(/^\s*(?:[-*•]|\d+[.)])\s+[^\n]+/gm), (match) => ({
-        start: match.index + match[0].length - match[0].trimStart().length,
-        end: match.index + match[0].length
-      }));
+      const listSpans = [];
+      let lineOffset = 0;
+      for (const line of raw.split('\n')) {
+        if (LIST_MARKER.test(line) && line.trim()) {
+          listSpans.push({ start: lineOffset + line.length - line.trimStart().length, end: lineOffset + line.length });
+        }
+        lineOffset += line.length + 1;
+      }
       const punctuation = Array.from(raw.matchAll(/:(?!\/\/)|[—–]/g), (match) => ({ start: match.index, end: match.index + 1 }));
       const colons = punctuation.filter((span) => raw[span.start] === ':').length;
       const dashes = (raw.match(/[—–]/g) || []).length;
@@ -528,7 +555,7 @@ function createDetectorEngine(options) {
     const stopwordRatio = wordCount ? stopHits / wordCount : 0;
 
     const buzzHits = countPhraseHits(cleaned, PHRASES.buzz);
-    const hedgeHits = countPhraseHits(cleaned, PHRASES.hedge);
+    const hedgeHits = modelReferenceSpans(parsed).length;
     const transitionHits = countPhraseHits(cleaned, PHRASES.transition);
     const templateHits = countPhraseHits(cleaned, PHRASES.template);
 
@@ -545,7 +572,7 @@ function createDetectorEngine(options) {
     const punctuationVariety = Object.values(punctuationCounts).filter((count) => count > 0).length / 8;
 
     const lines = raw.split('\n');
-    const listMarkerCount = lines.filter((line) => /^\s*(?:•|-|\*|\d+[.)])\s+/.test(line)).length;
+    const listMarkerCount = lines.filter((line) => LIST_MARKER.test(line)).length;
     const newlineCount = (raw.match(/\n/g) || []).length;
     const urlCount = (cleaned.match(/\bhttps?:\/\/\S+|\bwww\.\S+/gi) || []).length;
     const mentionCount = (cleaned.match(/@\w+|(?:^|\s)\/?[ur]\/[A-Za-z0-9_-]+/g) || []).length;
@@ -965,7 +992,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       background: var(--aih-bg);
       background: color-mix(in srgb, var(--aih-bg) 94%, var(--aih-accent) 6%);
       border: 1px solid var(--aih-border);
-      border-radius: 12px;
+      border-radius: 8px;
       box-sizing: border-box;
       color: var(--aih-text);
       cursor: pointer;
@@ -973,7 +1000,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
       font-weight: 650;
-      gap: 6px;
+      gap: 8px;
       line-height: 1.35;
       margin: 4px 0;
       width: fit-content;
@@ -982,7 +1009,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       height: auto;
       max-height: none;
       min-height: 30px;
-      padding: 5px 8px;
+      padding: 5px 9px;
       flex: 0 1 auto;
       align-self: flex-start;
       appearance: none;
@@ -1025,14 +1052,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; font-weight: 700; }
     .ai-heuristic-badge .ai-heuristic-badge__coverage { min-width: 0; color: var(--aih-muted); font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
     .ai-heuristic-meter {
       align-items: center;
       display: inline-grid;
       flex: 0 0 auto;
       gap: 2px;
-      grid-template-columns: repeat(6, 8px);
+      grid-template-columns: repeat(6, 7px);
       vertical-align: middle;
     }
     .ai-heuristic-meter__segment {
@@ -1040,8 +1067,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border: 1px solid var(--aih-muted);
       border-radius: 2px;
       box-sizing: border-box;
-      height: 12px;
-      width: 8px;
+      height: 11px;
+      width: 7px;
     }
     .ai-heuristic-meter__segment[data-filled="true"] {
       background: var(--aih-accent);
@@ -1051,11 +1078,21 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
     button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
     .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover__result { font-weight: 700; margin: 0 0 8px; }
+    .ai-heuristic-popover .ai-heuristic-popover__result {
+      background: var(--aih-panel);
+      border-radius: 8px;
+      color: var(--aih-text);
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+    }
     .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
-    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0 0 18px; }
+    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
+    .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
     .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
-    .ai-heuristic-cue-example { color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; font-size: 12px; }
+    .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
     .ai-heuristic-popover input { accent-color: #2563eb; }
@@ -1082,6 +1119,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       right: 14px;
       z-index: 2147483645;
     }
+    .ai-heuristic-launcher:hover { background: #312e81; }
+    .ai-heuristic-launcher:disabled { cursor: wait; opacity: .75; }
     .ai-heuristic-launcher:focus-visible { outline: 3px solid rgba(129, 140, 248, .55); outline-offset: 2px; }
 
     .ai-heuristic-popover {
@@ -1110,6 +1149,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 380px;
       z-index: 2147483646;
     }
+    .ai-heuristic-popover, .ai-heuristic-popover * { box-sizing: border-box; }
+    .ai-heuristic-popover p, .ai-heuristic-popover li, .ai-heuristic-popover label {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: inherit;
+      letter-spacing: normal;
+      text-transform: none;
+    }
     .ai-heuristic-popover[data-level="insufficient"] { --aih-accent: #64748b; }
     .ai-heuristic-popover[data-level="cue-none"] { --aih-accent: #64748b; }
     .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #2563eb; }
@@ -1128,6 +1175,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       gap: 12px;
       justify-content: space-between;
       padding: 15px 16px 13px;
+      position: sticky;
+      top: 0;
+      background: var(--aih-bg);
+      z-index: 1;
     }
     .ai-heuristic-popover h2 {
       color: var(--aih-text);
@@ -1148,6 +1199,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       justify-content: center;
       padding: 0;
       width: 30px;
+      flex: 0 0 30px;
     }
     .ai-heuristic-popover__close:hover { background: var(--aih-panel); color: var(--aih-text); }
     .ai-heuristic-popover__close:focus-visible,
@@ -1166,12 +1218,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       padding: 9px 10px;
     }
     .ai-heuristic-popover__section { border-top: 1px solid var(--aih-border); margin-top: 13px; padding-top: 12px; }
-    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 12px; margin: 0 0 7px; }
+    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 13px; line-height: 1.35; margin: 0 0 7px; }
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
     .ai-heuristic-popover details { margin-top: 12px; }
-    .ai-heuristic-popover summary { color: var(--aih-muted); cursor: pointer; font-weight: 700; }
+    .ai-heuristic-popover summary { color: var(--aih-text); cursor: pointer; font-weight: 650; padding: 4px 0; }
     .ai-heuristic-popover__technical {
       background: var(--aih-panel);
       border-radius: 9px;
@@ -1185,14 +1237,24 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     .ai-heuristic-popover__settings {
       display: grid;
-      gap: 9px;
+      gap: 0;
     }
     .ai-heuristic-popover__settings label {
       align-items: center;
       color: var(--aih-text);
       display: flex;
-      gap: 8px;
+      gap: 12px;
       justify-content: space-between;
+      min-width: 0;
+      padding: 8px 0;
+      overflow-wrap: anywhere;
+    }
+    .ai-heuristic-popover__settings label + label { border-top: 1px solid var(--aih-border); }
+    .ai-heuristic-popover__settings input[type="checkbox"] {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      margin: 0;
     }
     .ai-heuristic-popover__settings select {
       background: var(--aih-bg);
@@ -1206,6 +1268,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       color: var(--aih-muted);
       font-size: 10px;
       margin: 13px 0 0;
+    }
+    @media (max-width: 420px) {
+      .ai-heuristic-launcher { bottom: max(10px, env(safe-area-inset-bottom)); right: max(10px, env(safe-area-inset-right)); }
+      .ai-heuristic-popover__header { padding: 12px 14px; }
+      .ai-heuristic-popover__body { padding: 12px 14px 14px; }
     }
     @media (prefers-color-scheme: dark) {
       button.ai-heuristic-badge[data-ai-heuristic-ui] {
@@ -1621,14 +1688,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   function positionPopover(popover, badge) {
     const rect = badge.getBoundingClientRect();
     const margin = 12;
-    const width = Math.min(380, window.innerWidth - margin * 2);
+    const width = Math.max(0, Math.min(380, window.innerWidth - margin * 2));
     popover.style.width = `${width}px`;
     let left;
     if (rect.right + 8 + width <= window.innerWidth - margin) left = rect.right + 8;
     else if (rect.left - 8 - width >= margin) left = rect.left - 8 - width;
     else left = clamp(rect.left, margin, window.innerWidth - width - margin);
     let top = rect.bottom + 8;
-    const height = Math.min(popover.scrollHeight, window.innerHeight - margin * 2);
+    const height = popover.getBoundingClientRect().height;
     if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
     popover.style.left = `${left}px`;
     popover.style.top = `${top}px`;
@@ -2342,5 +2409,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v3-charhash128"},"models":{}}, {version:"0.7.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{}}, {version:"0.8.0",distribution:"targeted"});
 })();

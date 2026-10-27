@@ -1,0 +1,402 @@
+{
+  "purpose": "Synthetic rule-coverage audit. No authorship labels, accuracy estimate, or calibration evidence.",
+  "detectorSha256": {
+    "current": "681465370ab3b9bbe3902e163307cdd1ee3451a14594074152db5dd503d1abdd",
+    "229f50d11f7733575f8f480d3bdb7369df29aa57": "69b3d13c762081ff3aede3786314a918e500710574ad103e9c775c10fc5a5e65"
+  },
+  "probes": [
+    {
+      "id": "single-stock-phrase",
+      "question": "Does one stock phrase meet the current combination threshold?",
+      "text": "Here are the notes from our repair this week. We checked the hinge on Tuesday and replaced the old latch after lunch.",
+      "results": {
+        "current": {
+          "words": 22,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 22,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "combined-stock-phrases",
+      "question": "Does a second distinct framing phrase change the family count?",
+      "text": "Here are the key takeaways from our repair this week. We checked the hinge on Tuesday and replaced the old latch after lunch.",
+      "results": {
+        "current": {
+          "words": 23,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 23,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "canonical-announcement",
+      "question": "Does the exact announcement phrase with two promotional terms match?",
+      "text": "I'm excited to share our new tool with the team. We hope this robust design will support a scalable service for everyone.",
+      "results": {
+        "current": {
+          "words": 22,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 22,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "announcement-variant",
+      "question": "Does removing the subject change that result?",
+      "text": "Excited to share our new tool with the team. We hope this robust design will support a scalable service for everyone.",
+      "results": {
+        "current": {
+          "words": 21,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 21,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "bullet-list",
+      "question": "How is a three-item bullet list handled?",
+      "text": "We checked the workshop before opening it today.\n• The door opens.\n• The light works.\n• The roof holds.",
+      "results": {
+        "current": {
+          "words": 17,
+          "sample": "short",
+          "families": [
+            "structured-presentation"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 17,
+          "sample": "short",
+          "families": [
+            "structured-presentation"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "arrow-list",
+      "question": "Does an equivalent arrow list preserve that result?",
+      "text": "We checked the workshop before opening it today.\n→ The door opens.\n→ The light works.\n→ The roof holds.",
+      "results": {
+        "current": {
+          "words": 17,
+          "sample": "short",
+          "families": [
+            "structured-presentation"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 17,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "professional-role",
+      "question": "Does an AI job title incorrectly trigger the self-disclosure descriptor?",
+      "text": "As an AI engineer, I spent Tuesday fixing a broken test. The problem was a missing file and we restored it from the backup.",
+      "results": {
+        "current": {
+          "words": 24,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 24,
+          "sample": "standard",
+          "families": [
+            "self-disclosure"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "explicit-model-reference",
+      "question": "Does explicit model wording produce the same count as one mundane style family?",
+      "text": "As an AI language model, I can explain the general steps. I do not know what happened in your workshop yesterday.",
+      "results": {
+        "current": {
+          "words": 21,
+          "sample": "standard",
+          "families": [
+            "self-disclosure"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 21,
+          "sample": "standard",
+          "families": [
+            "self-disclosure"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "quoted-reference",
+      "question": "Is quoted model wording excluded?",
+      "text": "The article quoted \"as an AI\" while explaining how the product works. We discussed the example at our meeting before going home.",
+      "results": {
+        "current": {
+          "words": 19,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 19,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "contrast-rhetoric",
+      "question": "Are contrast constructions outside the phrase list observed?",
+      "text": "We don't need more dashboards. We need clearer decisions. This isn't a tooling problem. It's a question of how our team works together.",
+      "results": {
+        "current": {
+          "words": 23,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 23,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "contemporary-framing",
+      "question": "Do several contemporary framing phrases trigger the family?",
+      "text": "In a world where every team is changing, the real challenge is choosing where to focus. The possibilities are endless when people share what they learn.",
+      "results": {
+        "current": {
+          "words": 26,
+          "sample": "standard",
+          "families": [
+            "formulaic-framing"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 26,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "single-contemporary-phrase",
+      "question": "Does one ordinary framing phrase alone remain below the combination threshold?",
+      "text": "The best part was seeing my brother after his long trip. We ate dinner at the station and went home.",
+      "results": {
+        "current": {
+          "words": 20,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 20,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "quoted-contemporary-framing",
+      "question": "Are multiple framing phrases inside a quotation ignored?",
+      "text": "The article quoted \"in a world where the possibilities are endless\" to make fun of the advertisement. Then the editors discussed its wording.",
+      "results": {
+        "current": {
+          "words": 15,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 15,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "function-word-opening",
+      "question": "Are three repeated three-word function-word openings observed?",
+      "text": "It is time to reconsider the plan. It is time to ask better questions. It is time to build something useful.",
+      "results": {
+        "current": {
+          "words": 21,
+          "sample": "standard",
+          "families": [
+            "repeated-openings"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 21,
+          "sample": "standard",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "ordinary-function-word-opening",
+      "question": "Do two ordinary function-word beginnings remain below the threshold?",
+      "text": "It is raining outside. It is getting cold. We should bring a coat.",
+      "results": {
+        "current": {
+          "words": 13,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 13,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "checkmark-list",
+      "question": "Does an equivalent checkmark list preserve the bullet-list result?",
+      "text": "We checked the workshop before opening it today.\n✓ The door opens.\n✓ The light works.\n✓ The roof holds.",
+      "results": {
+        "current": {
+          "words": 17,
+          "sample": "short",
+          "families": [
+            "structured-presentation"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 17,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "explicit-assistant-reference",
+      "question": "Does a first-person AI assistant reference match without treating an AI job title the same way?",
+      "text": "As an AI assistant, I can explain the general steps. I do not know what happened in your workshop yesterday.",
+      "results": {
+        "current": {
+          "words": 20,
+          "sample": "standard",
+          "families": [
+            "self-disclosure"
+          ],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 20,
+          "sample": "standard",
+          "families": [
+            "self-disclosure"
+          ],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "very-short",
+      "question": "Does a short sample have a distinct evidence status?",
+      "text": "I agree with your point. That is helpful!",
+      "results": {
+        "current": {
+          "words": 8,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 8,
+          "sample": "short",
+          "families": [],
+          "assessed": true
+        }
+      }
+    },
+    {
+      "id": "uncertain-language",
+      "question": "Is language abstention distinct from zero matches?",
+      "text": "No puedo asistir a la reunión de mañana. La oficina está cerrada y vamos a trabajar desde casa esta semana.",
+      "results": {
+        "current": {
+          "words": 20,
+          "sample": "uncertain",
+          "families": [],
+          "assessed": false
+        },
+        "229f50d11f7733575f8f480d3bdb7369df29aa57": {
+          "words": 20,
+          "sample": "uncertain",
+          "families": [],
+          "assessed": false
+        }
+      }
+    }
+  ]
+}
