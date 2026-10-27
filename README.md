@@ -75,10 +75,10 @@ The browser preserves paragraph, line-break, and list boundaries while extractin
 
 The default rules look for exact, inspectable patterns:
 
-- explicit model-reference wording, excluding ordinary refusals such as “I cannot”
-- combinations of stock framing phrases instead of a single everyday phrase
-- repeated multiword sentence openings
-- lists or punctuation clusters, with punctuation density adjusted for text length
+- explicit model-reference wording, excluding ordinary refusals and AI job titles
+- combinations of stock framing phrases, including common contemporary variants, instead of a single everyday phrase
+- repeated multiword sentence openings, including longer repeated openings that begin with function words
+- bullet, arrow, checkmark, and numbered lists or punctuation clusters, with punctuation density adjusted for text length
 - similar prose sentence lengths with minimum sample requirements
 - contiguous repeated 3–5-word phrases, with overlapping spans counted once and repetition measured relative to prose length
 
@@ -91,6 +91,8 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 ## Accuracy policy
 
 The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows every contributing cue; otherwise it explicitly reports that the text was not assessed. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+
+Version 0.8 recognizes more combinations of framing, repeated openings, and list markers, and avoids treating examples such as “AI engineer” as a model self-reference. These rules will match more human writing too; a broader match is not evidence that detection accuracy has improved. See the [sensitivity validation](docs/sensitivity-validation.md) for the before-and-after probes and their limits.
 
 The legacy experimental model output remains available only in Technical details for development comparison. A future trained model may replace the rubric only after a suitable distributable corpus and held-out report are published.
 

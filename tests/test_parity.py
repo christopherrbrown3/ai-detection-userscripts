@@ -26,6 +26,10 @@ class FeatureParityTests(unittest.TestCase):
                 "kind": "post",
                 "text": 'As an AI language model, I can help you think about the problem.',
             },
+            {"kind": "post", "text": "As an AI engineer, I build tools for our team."},
+            {"kind": "post", "text": "I’m an AI assistant, and I can help you."},
+            {"kind": "post", "text": 'The quote "as an AI" is excluded; `I am an AI` is code.'},
+            {"kind": "post", "text": "→ We inspect the gate.\n✓ We inspect the door.\n✅ We inspect the roof."},
             {"kind": "comment", "text": ""},
             {
                 "kind": "post",

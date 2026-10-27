@@ -5,7 +5,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'browser-cues-v3';
+  const ANALYSIS_VERSION = 'browser-cues-v4';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -25,10 +25,6 @@ function createDetectorEngine(options) {
       'scalable', 'robust', 'strategic', 'amazing', 'incredible', 'excited to announce',
       'thrilled to', 'grateful for', 'honored to', 'humble', 'delighted to share', 'proud to'
     ],
-    hedge: [
-      'as an ai', 'as a language model', 'as an artificial intelligence',
-      'i am an ai', "i'm an ai", 'i am a language model'
-    ],
     transition: [
       'in conclusion', 'overall', 'to sum up', 'moreover', 'furthermore', 'additionally',
       'in addition', 'on the other hand', 'as a result', 'in summary', 'it is important to',
@@ -47,6 +43,20 @@ function createDetectorEngine(options) {
       'make no mistake', "it's not about", "this isn't about", 'the question is'
     ]
   };
+
+  // Cue-only framing additions do not change the diagnostic model vocabulary.
+  const FRAMING_CUES = [
+    'the real question is', 'the real challenge is', 'the real magic',
+    'here is the truth', "here's the truth", 'the answer is simple',
+    'a powerful reminder', 'a testament to',
+    'in a world where', "in today's fast-paced world", 'in an ever-changing world',
+    'at its core', 'the key takeaway', 'the key to success', 'it all comes down to',
+    'excited to share', 'game changer', 'unlock the power', 'unlock your potential', 'take it to the next level',
+    'redefining the way', 'the possibilities are endless'
+  ];
+
+  const LIST_MARKER = /^(?:[ \t]*)(?:[-*•→➜➔►▸✓✔☑✅]\uFE0F?|\d+[.)])[ \t]+/;
+  const MODEL_REFERENCE = /(?:^|[^\p{L}\p{N}])((?:as an ai(?: language model| assistant)?|as a language model|as an artificial intelligence|i am an ai(?: language model| assistant)?|i'm an ai(?: language model| assistant)?|i am a language model))(?=$|[ \t]*(?:[,;:!?.]|\b(?:i|and|but|can|cannot|do|don't|will|am|was|that|designed|trained)\b))/giu;
 
   const FEATURE_NAMES = {
     aiHedgePresent: 'AI self-disclosure',
@@ -153,7 +163,7 @@ function createDetectorEngine(options) {
         sentences.push({
           text: trimmed, start: offset, end: offset + trimmed.length, tokens,
           length: tokens.length,
-          isList: /^\s*(?:[-*•]|\d+[.)])\s+/.test(masked.slice(lineStart))
+          isList: LIST_MARKER.test(masked.slice(lineStart))
         });
       }
       start = end;
@@ -197,6 +207,14 @@ function createDetectorEngine(options) {
       spans.push({ word: normalizeApostrophes(match[0]).toLowerCase(), start: sentence.start + match.index, end: sentence.start + match.index + match[0].length });
     }
     return spans;
+  }
+
+  function modelReferenceSpans(parsed) {
+    const normalized = normalizeApostrophes(parsed.masked);
+    return Array.from(normalized.matchAll(MODEL_REFERENCE), (match) => {
+      const start = match.index + match[0].length - match[1].length;
+      return { start, end: start + match[1].length };
+    }).filter(({ start, end }) => !parsed.excluded.some((span) => start < span.end && end > span.start));
   }
 
   function mean(values) {
@@ -288,12 +306,12 @@ function createDetectorEngine(options) {
     }
 
     if (assessed) {
-      const references = phraseSpans(parsed, PHRASES.hedge);
+      const references = modelReferenceSpans(parsed);
       if (references.length) {
         add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
       }
 
-      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical]);
+      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES]);
       const buzz = phraseSpans(parsed, PHRASES.buzz);
       // One everyday phrase or promotional adjective is too little to flag.
       const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
@@ -308,7 +326,6 @@ function createDetectorEngine(options) {
       for (const tokens of proseTokens) {
         if (tokens.length < 2) continue;
         const first = tokens.slice(0, 2);
-        if (first.every((token) => STOPWORDS.has(token.word))) continue;
         if (parsed.excluded.some((span) => first[0].start < span.end && first[1].end > span.start)) continue;
         const key = first.map((token) => token.word).join(' ');
         if (!openingGroups.has(key)) openingGroups.set(key, []);
@@ -324,16 +341,26 @@ function createDetectorEngine(options) {
           !parsed.excluded.some((span) => tokens[0].start < span.end && tokens[sharedLength].end > span.start))) sharedLength += 1;
         spans.forEach((span, index) => { span.end = groups[index][sharedLength - 1].end; });
       }
-      const openingSpans = repeatedOpenings.flat();
+      // Common function-word starts need three occurrences and a shared third
+      // word; two instances of "it is" alone are ordinary prose.
+      const openingSpans = repeatedOpenings.filter((spans) => {
+        const tokens = tokenize(raw.slice(spans[0].start, spans[0].end));
+        return !tokens.slice(0, 2).every((word) => STOPWORDS.has(word)) ||
+          (spans.length >= 3 && tokens.length >= 3);
+      }).flat();
       if (prose.length >= 3 && openingSpans.length) {
         add('repeated-openings', 'Repeated sentence openings',
           openingSpans.length + ' of ' + prose.length + ' prose sentences reuse a multiword opening.', openingSpans);
       }
 
-      const listSpans = Array.from(raw.matchAll(/^\s*(?:[-*•]|\d+[.)])\s+[^\n]+/gm), (match) => ({
-        start: match.index + match[0].length - match[0].trimStart().length,
-        end: match.index + match[0].length
-      }));
+      const listSpans = [];
+      let lineOffset = 0;
+      for (const line of raw.split('\n')) {
+        if (LIST_MARKER.test(line) && line.trim()) {
+          listSpans.push({ start: lineOffset + line.length - line.trimStart().length, end: lineOffset + line.length });
+        }
+        lineOffset += line.length + 1;
+      }
       const punctuation = Array.from(raw.matchAll(/:(?!\/\/)|[—–]/g), (match) => ({ start: match.index, end: match.index + 1 }));
       const colons = punctuation.filter((span) => raw[span.start] === ':').length;
       const dashes = (raw.match(/[—–]/g) || []).length;
@@ -502,7 +529,7 @@ function createDetectorEngine(options) {
     const stopwordRatio = wordCount ? stopHits / wordCount : 0;
 
     const buzzHits = countPhraseHits(cleaned, PHRASES.buzz);
-    const hedgeHits = countPhraseHits(cleaned, PHRASES.hedge);
+    const hedgeHits = modelReferenceSpans(parsed).length;
     const transitionHits = countPhraseHits(cleaned, PHRASES.transition);
     const templateHits = countPhraseHits(cleaned, PHRASES.template);
 
@@ -519,7 +546,7 @@ function createDetectorEngine(options) {
     const punctuationVariety = Object.values(punctuationCounts).filter((count) => count > 0).length / 8;
 
     const lines = raw.split('\n');
-    const listMarkerCount = lines.filter((line) => /^\s*(?:•|-|\*|\d+[.)])\s+/.test(line)).length;
+    const listMarkerCount = lines.filter((line) => LIST_MARKER.test(line)).length;
     const newlineCount = (raw.match(/\n/g) || []).length;
     const urlCount = (cleaned.match(/\bhttps?:\/\/\S+|\bwww\.\S+/gi) || []).length;
     const mentionCount = (cleaned.match(/@\w+|(?:^|\s)\/?[ur]\/[A-Za-z0-9_-]+/g) || []).length;

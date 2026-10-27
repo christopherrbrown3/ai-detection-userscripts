@@ -27,10 +27,6 @@ PHRASES = {
         "scalable", "robust", "strategic", "amazing", "incredible", "excited to announce",
         "thrilled to", "grateful for", "honored to", "humble", "delighted to share", "proud to",
     ],
-    "hedge": [
-        "as an ai", "as a language model", "as an artificial intelligence",
-        "i am an ai", "i'm an ai", "i am a language model",
-    ],
     "transition": [
         "in conclusion", "overall", "to sum up", "moreover", "furthermore", "additionally",
         "in addition", "on the other hand", "as a result", "in summary", "it is important to",
@@ -128,6 +124,18 @@ def count_phrase_hits(text: str, phrases: Iterable[str]) -> int:
         pattern = rf"(^|[^a-z0-9]){re.escape(phrase)}(?=$|[^a-z0-9])"
         total += len(re.findall(pattern, normalized))
     return total
+
+
+FEATURE_SET = "stylometry-v4-charhash128"
+
+MODEL_REFERENCE_RE = re.compile(
+    r"(?:^|[^\w]|_)((?:as an ai(?: language model| assistant)?|as a language model|"
+    r"as an artificial intelligence|i am an ai(?: language model| assistant)?|"
+    r"i'm an ai(?: language model| assistant)?|i am a language model))"
+    r"(?=$|[ \t]*(?:[,;:!?.]|\b(?:i|and|but|can|cannot|do|don't|will|am|was|that|designed|trained)\b))",
+    re.I,
+)
+LIST_MARKER_RE = re.compile(r"^[ \t]*(?:[-*•→➜➔►▸✓✔☑✅]\ufe0f?|\d+[.)])[ \t]+")
 
 
 def fnv1a_units(units: Iterable[int]) -> int:
@@ -240,7 +248,7 @@ def extract_features(text: str, *, kind: str) -> Extracted:
     stopword_ratio = stop_hits / word_count if word_count else 0.0
 
     buzz_hits = count_phrase_hits(cleaned, PHRASES["buzz"])
-    hedge_hits = count_phrase_hits(cleaned, PHRASES["hedge"])
+    hedge_hits = len(MODEL_REFERENCE_RE.findall(normalize_apostrophes(raw)))
     transition_hits = count_phrase_hits(cleaned, PHRASES["transition"])
     template_hits = count_phrase_hits(cleaned, PHRASES["template"])
 
@@ -257,7 +265,7 @@ def extract_features(text: str, *, kind: str) -> Extracted:
     punctuation_variety = sum(1 for count in punctuation_counts.values() if count > 0) / 8.0
 
     lines = raw.split("\n")
-    list_marker_count = sum(1 for line in lines if re.match(r"^\s*(?:•|-|\*|\d+[.)])\s+", line))
+    list_marker_count = sum(1 for line in lines if LIST_MARKER_RE.match(line))
     newline_count = len(re.findall(r"\n", raw))
     url_count = len(re.findall(r"\bhttps?://\S+|\bwww\.\S+", cleaned, flags=re.I))
     mention_count = len(re.findall(r"@\w+|(?:^|\s)/?[ur]/[A-Za-z0-9_-]+", cleaned))

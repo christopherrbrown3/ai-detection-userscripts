@@ -19,9 +19,9 @@ from sklearn.metrics import (
 from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 try:
-    from training.features import CHAR_HASH_DIM, Extracted, extract_features  # type: ignore
+    from training.features import CHAR_HASH_DIM, FEATURE_SET, Extracted, extract_features  # type: ignore
 except ModuleNotFoundError:
-    from features import CHAR_HASH_DIM, Extracted, extract_features  # type: ignore
+    from features import CHAR_HASH_DIM, FEATURE_SET, Extracted, extract_features  # type: ignore
 
 
 FEATURE_ORDER = [
@@ -406,6 +406,7 @@ def main() -> None:
 
     output_models: Dict[str, Any] = {
         "schema_version": 2,
+        "feature_set": FEATURE_SET,
         "feature_order": FEATURE_ORDER,
         "char_hash_dim": CHAR_HASH_DIM,
         "models": {},

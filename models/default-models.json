@@ -3,8 +3,8 @@
   "metadata": {
     "version": "0.2.0",
     "calibrated": false,
-    "provenance": "Hand-tuned experimental baseline retained for continuity. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.",
-    "feature_set": "stylometry-v3-charhash128"
+    "provenance": "Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.",
+    "feature_set": "stylometry-v4-charhash128"
   },
   "models": {
     "linkedin:post": {

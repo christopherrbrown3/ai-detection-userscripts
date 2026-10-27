@@ -102,7 +102,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       background: var(--aih-bg);
       background: color-mix(in srgb, var(--aih-bg) 94%, var(--aih-accent) 6%);
       border: 1px solid var(--aih-border);
-      border-radius: 12px;
+      border-radius: 8px;
       box-sizing: border-box;
       color: var(--aih-text);
       cursor: pointer;
@@ -110,7 +110,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 12px;
       font-weight: 650;
-      gap: 6px;
+      gap: 8px;
       line-height: 1.35;
       margin: 4px 0;
       width: fit-content;
@@ -119,7 +119,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       height: auto;
       max-height: none;
       min-height: 30px;
-      padding: 5px 8px;
+      padding: 5px 9px;
       flex: 0 1 auto;
       align-self: flex-start;
       appearance: none;
@@ -162,14 +162,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 7px;
     }
     .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; font-weight: 700; }
     .ai-heuristic-badge .ai-heuristic-badge__coverage { min-width: 0; color: var(--aih-muted); font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
     .ai-heuristic-meter {
       align-items: center;
       display: inline-grid;
       flex: 0 0 auto;
       gap: 2px;
-      grid-template-columns: repeat(6, 8px);
+      grid-template-columns: repeat(6, 7px);
       vertical-align: middle;
     }
     .ai-heuristic-meter__segment {
@@ -177,8 +177,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border: 1px solid var(--aih-muted);
       border-radius: 2px;
       box-sizing: border-box;
-      height: 12px;
-      width: 8px;
+      height: 11px;
+      width: 7px;
     }
     .ai-heuristic-meter__segment[data-filled="true"] {
       background: var(--aih-accent);
@@ -188,11 +188,21 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
     button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
     .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover__result { font-weight: 700; margin: 0 0 8px; }
+    .ai-heuristic-popover .ai-heuristic-popover__result {
+      background: var(--aih-panel);
+      border-radius: 8px;
+      color: var(--aih-text);
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+    }
     .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
-    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0 0 18px; }
+    .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
+    .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
     .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
-    .ai-heuristic-cue-example { color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; font-size: 12px; }
+    .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
     .ai-heuristic-popover input { accent-color: #2563eb; }
@@ -219,6 +229,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       right: 14px;
       z-index: 2147483645;
     }
+    .ai-heuristic-launcher:hover { background: #312e81; }
+    .ai-heuristic-launcher:disabled { cursor: wait; opacity: .75; }
     .ai-heuristic-launcher:focus-visible { outline: 3px solid rgba(129, 140, 248, .55); outline-offset: 2px; }
 
     .ai-heuristic-popover {
@@ -247,6 +259,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       width: 380px;
       z-index: 2147483646;
     }
+    .ai-heuristic-popover, .ai-heuristic-popover * { box-sizing: border-box; }
+    .ai-heuristic-popover p, .ai-heuristic-popover li, .ai-heuristic-popover label {
+      font-family: inherit;
+      font-size: inherit;
+      line-height: inherit;
+      letter-spacing: normal;
+      text-transform: none;
+    }
     .ai-heuristic-popover[data-level="insufficient"] { --aih-accent: #64748b; }
     .ai-heuristic-popover[data-level="cue-none"] { --aih-accent: #64748b; }
     .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #2563eb; }
@@ -265,6 +285,10 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       gap: 12px;
       justify-content: space-between;
       padding: 15px 16px 13px;
+      position: sticky;
+      top: 0;
+      background: var(--aih-bg);
+      z-index: 1;
     }
     .ai-heuristic-popover h2 {
       color: var(--aih-text);
@@ -285,6 +309,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       justify-content: center;
       padding: 0;
       width: 30px;
+      flex: 0 0 30px;
     }
     .ai-heuristic-popover__close:hover { background: var(--aih-panel); color: var(--aih-text); }
     .ai-heuristic-popover__close:focus-visible,
@@ -303,12 +328,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       padding: 9px 10px;
     }
     .ai-heuristic-popover__section { border-top: 1px solid var(--aih-border); margin-top: 13px; padding-top: 12px; }
-    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 12px; margin: 0 0 7px; }
+    .ai-heuristic-popover__section h3 { color: var(--aih-text); font-size: 13px; line-height: 1.35; margin: 0 0 7px; }
     .ai-heuristic-popover__section ul { margin: 0; padding-left: 19px; }
     .ai-heuristic-popover__section li { margin: 3px 0; }
     .ai-heuristic-popover__empty { color: var(--aih-muted); margin: 0; }
     .ai-heuristic-popover details { margin-top: 12px; }
-    .ai-heuristic-popover summary { color: var(--aih-muted); cursor: pointer; font-weight: 700; }
+    .ai-heuristic-popover summary { color: var(--aih-text); cursor: pointer; font-weight: 650; padding: 4px 0; }
     .ai-heuristic-popover__technical {
       background: var(--aih-panel);
       border-radius: 9px;
@@ -322,14 +347,24 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     .ai-heuristic-popover__settings {
       display: grid;
-      gap: 9px;
+      gap: 0;
     }
     .ai-heuristic-popover__settings label {
       align-items: center;
       color: var(--aih-text);
       display: flex;
-      gap: 8px;
+      gap: 12px;
       justify-content: space-between;
+      min-width: 0;
+      padding: 8px 0;
+      overflow-wrap: anywhere;
+    }
+    .ai-heuristic-popover__settings label + label { border-top: 1px solid var(--aih-border); }
+    .ai-heuristic-popover__settings input[type="checkbox"] {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      margin: 0;
     }
     .ai-heuristic-popover__settings select {
       background: var(--aih-bg);
@@ -343,6 +378,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       color: var(--aih-muted);
       font-size: 10px;
       margin: 13px 0 0;
+    }
+    @media (max-width: 420px) {
+      .ai-heuristic-launcher { bottom: max(10px, env(safe-area-inset-bottom)); right: max(10px, env(safe-area-inset-right)); }
+      .ai-heuristic-popover__header { padding: 12px 14px; }
+      .ai-heuristic-popover__body { padding: 12px 14px 14px; }
     }
     @media (prefers-color-scheme: dark) {
       button.ai-heuristic-badge[data-ai-heuristic-ui] {
@@ -758,14 +798,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   function positionPopover(popover, badge) {
     const rect = badge.getBoundingClientRect();
     const margin = 12;
-    const width = Math.min(380, window.innerWidth - margin * 2);
+    const width = Math.max(0, Math.min(380, window.innerWidth - margin * 2));
     popover.style.width = `${width}px`;
     let left;
     if (rect.right + 8 + width <= window.innerWidth - margin) left = rect.right + 8;
     else if (rect.left - 8 - width >= margin) left = rect.left - 8 - width;
     else left = clamp(rect.left, margin, window.innerWidth - width - margin);
     let top = rect.bottom + 8;
-    const height = Math.min(popover.scrollHeight, window.innerHeight - margin * 2);
+    const height = popover.getBoundingClientRect().height;
     if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
     popover.style.left = `${left}px`;
     popover.style.top = `${top}px`;

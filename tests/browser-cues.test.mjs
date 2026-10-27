@@ -25,10 +25,13 @@ test('ordinary refusals and quoted model references do not imply self-reference'
     'The article quoted "as an AI" while discussing the way we use chatbots.',
     "The article quoted 'as an AI' while discussing the way we use chatbots.",
     'The article quoted “as an AI 🙂” while discussing the way we use chatbots.',
-    'The article quoted \x60as an AI\x60 while discussing the way we use chatbots.'
+    'The article quoted \x60as an AI\x60 while discussing the way we use chatbots.',
+    'As an AI engineer, I work with models and help our team build software.',
+    "I'm an AI researcher and I work on language models with my colleagues."
   ]) assert.ok(!ids(engine.analyze(text)).includes('self-disclosure'));
   const result = engine.analyze('As an AI language model, I can help you think about the problem.');
   assert.ok(ids(result).includes('self-disclosure'));
+  assert.ok(ids(engine.analyze("I'm an AI assistant, and I can help you think about the problem.")).includes('self-disclosure'));
 });
 
 test('one parser handles line breaks, abbreviations, decimals and URLs', () => {
@@ -63,6 +66,16 @@ test('a list contributes structure without manufacturing rhythm or repetition cu
   assert.deepEqual(ids(result), ['structured-presentation']);
 });
 
+test('arrow and checkmark lists have the same structure and prose exclusions as bullets', () => {
+  const engine = loadEngine();
+  for (const marker of ['-', '→', '➜', '✓', '✅']) {
+    const result = engine.analyze(['gate', 'door', 'roof', 'shed', 'wall']
+      .map((item) => `${marker} We inspect the ${item} after work today`).join('\n'));
+    assert.deepEqual(ids(result), ['structured-presentation'], marker);
+    assert.equal(engine.extractFeatures(result.sourceText).metrics.listMarkerCount, 5);
+  }
+});
+
 test('repeated multiword openings have exact source spans', () => {
   const result = loadEngine().analyze('We tested the gate carefully after work. We tested the door with a new lock. We tested the roof before the rain came.');
   const cue = result.cueAssessment.families.find((family) => family.id === 'repeated-openings');
@@ -71,6 +84,32 @@ test('repeated multiword openings have exact source spans', () => {
   for (const span of cue.spans) assert.equal(result.sourceText.slice(span.start, span.end), 'We tested the');
   const short = loadEngine().analyze('Dinner is ready. Bring your plate. Wash your hands.');
   assert.ok(!ids(short).includes('repeated-openings'));
+});
+
+test('contemporary stock framing is detected without treating one common phrase as sufficient', () => {
+  const engine = loadEngine();
+  const patterned = engine.analyze('In a world where everything changes, the real challenge is finding a path forward. The possibilities are endless when people work together.');
+  const cue = patterned.cueAssessment.families.find((family) => family.id === 'formulaic-framing');
+  assert.ok(cue);
+  assert.ok(cue.spans.some((span) => patterned.sourceText.slice(span.start, span.end) === 'the real challenge is'));
+  assert.ok(!ids(engine.analyze('The best part was seeing my brother after his long trip. This is why we ate dinner at the station before going home.')).includes('formulaic-framing'));
+  assert.ok(!ids(engine.analyze('The article quoted "in a world where the possibilities are endless" to make fun of the advertisement.')).includes('formulaic-framing'));
+  const curly = engine.analyze('HERE’S THE TRUTH about our work. The key takeaway is that we need to listen to each other.');
+  assert.ok(ids(curly).includes('formulaic-framing'));
+  assert.ok(!ids(engine.analyze('In today’s fast-paced world, the buses are late again.')).includes('formulaic-framing'));
+  for (const opening of ["I'm excited to share", 'Excited to share']) {
+    const announcement = engine.analyze(`${opening} our new tool with the team. We hope this robust design will support a scalable service for everyone.`);
+    assert.ok(ids(announcement).includes('formulaic-framing'), opening);
+  }
+});
+
+test('repeated function-word openings require three occurrences and three shared words', () => {
+  const engine = loadEngine();
+  const patterned = engine.analyze('It is time to reconsider the plan. It is time to ask better questions. It is time to build something useful.');
+  const cue = patterned.cueAssessment.families.find((family) => family.id === 'repeated-openings');
+  assert.ok(cue);
+  assert.deepEqual(Array.from(cue.spans, (span) => patterned.sourceText.slice(span.start, span.end)), ['It is time to', 'It is time to', 'It is time to']);
+  assert.ok(!ids(engine.analyze('It is raining outside. It is getting cold. We should bring a coat.')).includes('repeated-openings'));
 });
 
 test('repeated phrases are contiguous and do not reuse counted openings', () => {
