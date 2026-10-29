@@ -47,7 +47,7 @@ for(const distribution of ['source','combined','targeted']) describe(distributio
     window.localStorage.removeItem(pageKey);
     window.__controller.stop();
     const fresh=load(manager);
-    await until(()=>fresh.document.querySelector('#post-text .ai-heuristic-badge'));
+    await until(()=>fresh.document.querySelector('#post-one > h3 .ai-heuristic-badge'));
     assert.equal(fresh.__controller.getSettings().enabled,true);
     assert.equal(fresh.__controller.getSettings().analyzeComments,false);
     assert.equal(fresh.document.querySelector('#comment-one .ai-heuristic-badge'),null);

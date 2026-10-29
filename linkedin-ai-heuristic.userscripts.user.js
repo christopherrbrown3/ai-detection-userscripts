@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         LinkedIn AI-Style Signal (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.9.0
+// @version      0.9.1
 // @description  Adds an experimental, privacy-preserving AI-style signal to LinkedIn posts and comments.
 // @author       christopherrbrown3
 // @license      MIT
@@ -950,6 +950,37 @@ function aiHeuristicTextContent(node) {
   return aiHeuristicReadContent(node).text;
 }
 
+// Keep controls outside links/buttons owned by the site. Adapters choose a
+// header belonging to this post; unknown layouts fall back above its text.
+function aiHeuristicPlaceHeaderBadge(element, badge, header, body) {
+  let parent, before;
+  if (header && element.contains(header)) {
+    const interactive = header.closest('a, button, [role="link"], [role="button"]');
+    if (interactive && element.contains(interactive) && interactive !== element) {
+      parent = interactive.parentElement;
+      before = interactive.nextSibling;
+    } else if (!interactive) {
+      parent = header;
+      before = null;
+    }
+  }
+  const inHeader = Boolean(parent);
+  if (!parent) {
+    parent = body && body !== element && element.contains(body) ? body.parentElement : element;
+    before = parent === element && (!body || body === element) ? element.firstChild : body;
+  }
+  // Mutation rescans may discover a header after the text. Reposition only
+  // when necessary so our own DOM writes do not perpetually trigger rescans.
+  if (badge.parentElement === parent && (before === badge || badge.nextSibling === before)) return;
+  const singleGridItem = inHeader && parent !== header && Array.from(parent.children).filter(node => node !== badge).length === 1 &&
+    window.getComputedStyle(parent).display === 'grid';
+  parent.insertBefore(badge, before);
+  badge.dataset.placement = inHeader ? 'header' : 'before-text';
+  // Current LinkedIn author links occupy a one-item grid. Its second column
+  // puts the stamp beside the name without rewriting the site's layout.
+  badge.style.gridArea = singleGridItem ? '1 / 2' : '';
+}
+
 function startAIHeuristic(platformAdapter, modelBundle, options) {
   'use strict';
   options = options || {};
@@ -1038,6 +1069,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-style: double;
       border-width: 3px;
       padding: 0 4px;
+    }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
+      margin-inline-start: 6px;
+      max-width: calc(100% - 6px);
+      vertical-align: middle;
     }
     button.ai-heuristic-badge[data-ai-heuristic-ui]:hover,
     button.ai-heuristic-badge[data-ai-heuristic-ui][aria-expanded="true"] {
@@ -1754,6 +1790,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
+      if (previous.badge) adapter.placeBadge(element, previous.badge, kind, content);
       if (previous.badge && previous.textHost !== textHost) {
         previous.textHost = textHost;
         sizeStamp(previous.badge, textHost);
@@ -2374,24 +2411,30 @@ function createPlatformAdapter() {
       return bestOwnedText(element, kind === 'comment' ? commentTextSelector : postTextSelector, kind);
     },
     placeBadge(element, badge, kind, content) {
-      if (kind === 'comment') {
-        const textHost = element.querySelector(commentTextSelector);
-        if (textHost && textHost.parentElement) {
-          textHost.parentElement.insertBefore(badge, textHost);
-          return;
-        }
-      }
       const textHost = content && content.host || findPostTextHost(element);
-      if (textHost && textHost.parentElement) {
-        textHost.parentElement.insertBefore(badge, textHost.nextSibling);
-        return;
+      const selectors = kind === 'comment'
+        ? ['.comments-comment-meta__description-title', '.comments-comment-entity__author', '.comments-comment-item__post-meta a[href]']
+        : ['.update-components-actor__title', '.update-components-actor__name', '.feed-shared-actor__name', '.update-components-actor__meta',
+          // Modern author links contain the name/degree in block text. Prefer
+          // them over the earlier inline "followed by" or reaction context.
+          'a[href*="/in/"]:has(p), a[href*="/company/"]:has(p), a[href*="/showcase/"]:has(p)',
+          'a[href*="/in/"]:has(> div), a[href*="/company/"]:has(> div), a[href*="/showcase/"]:has(> div)',
+          'h1, h2, h3'];
+      let header;
+      for (const selector of selectors) {
+        header = Array.from(element.querySelectorAll(selector)).find(node =>
+          (!textHost || (!textHost.contains(node) && Boolean(node.compareDocumentPosition(textHost) & 4))) &&
+          !node.closest('blockquote, pre, code, .update-components-mini-update-v2, [hidden], [aria-hidden="true"]') &&
+          (kind === 'comment' ? node.closest(commentSelector) === element : !node.closest(commentSelector)) &&
+          aiHeuristicTextContent(node).trim());
+        if (header) break;
       }
-      element.insertBefore(badge, element.firstChild);
+      aiHeuristicPlaceHeaderBadge(element, badge, header, textHost);
     }
   };
 }
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.9.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.9.1",distribution:"targeted"});
 })();

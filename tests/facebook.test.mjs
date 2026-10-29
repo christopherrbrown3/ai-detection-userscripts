@@ -69,10 +69,10 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     body.append(' I added more detail after checking the repair again this afternoon.');
     await until(() => window.__controller.getAnalysis(post)?.sourceText !== before);
     assert.match(window.__controller.getAnalysis(post).sourceText, /I added more detail/);
-    assert.equal(document.querySelectorAll('#post-text .ai-heuristic-badge').length, 1);
-    document.querySelector('#post-text .ai-heuristic-badge').remove();
-    await until(() => document.querySelector('#post-text .ai-heuristic-badge'));
-    assert.equal(document.querySelectorAll('#post-text .ai-heuristic-badge').length, 1);
+    assert.equal(document.querySelectorAll('#post-one > h3 .ai-heuristic-badge').length, 1);
+    document.querySelector('#post-one > h3 .ai-heuristic-badge').remove();
+    await until(() => document.querySelector('#post-one > h3 .ai-heuristic-badge'));
+    assert.equal(document.querySelectorAll('#post-one > h3 .ai-heuristic-badge').length, 1);
   });
 
   test('late replies and parent comment edits remain independent of the post', async () => {
@@ -87,8 +87,8 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     await until(() => window.__controller.getAnalysis(document.getElementById('comment-one'))?.sourceText === sample);
     assert.equal(window.__controller.getAnalysis(post), initial);
     setCheck(window, 'Analyze comments and replies', false);
-    await until(() => !document.querySelector('#comment-one .ai-heuristic-badge') && document.querySelector('#post-text .ai-heuristic-badge'));
-    assert.ok(document.querySelector('#post-text .ai-heuristic-badge'));
+    await until(() => !document.querySelector('#comment-one .ai-heuristic-badge') && document.querySelector('#post-one > h3 .ai-heuristic-badge'));
+    assert.ok(document.querySelector('#post-one > h3 .ai-heuristic-badge'));
   });
 
   test('quotes inside the message are excluded without changing original DOM', () => {
@@ -189,7 +189,7 @@ for (const distribution of ['combined','targeted']) {
     const fresh=loadGeneratedDom('facebook',fixture,'https://www.facebook.com/',{distribution:distribution==='combined'?'targeted':'combined',setup(w){w.localStorage.setItem(key,saved);}}).window;
     assert.equal(fresh.__controller.getSettings().enabled,true);
     assert.equal(fresh.__controller.getSettings().analyzeComments,false);
-    assert.ok(fresh.document.querySelector('#post-text .ai-heuristic-badge'));
+    assert.ok(fresh.document.querySelector('#post-one > h3 .ai-heuristic-badge'));
     assert.equal(fresh.document.querySelector('#comment-one .ai-heuristic-badge'),null);
     setCheck(fresh,'Enable style cues on this site',false);
     assert.equal(fresh.document.querySelector('.ai-heuristic-badge'),null);

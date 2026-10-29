@@ -15,7 +15,7 @@ async (page) => {
     '#flex .host{display:flex;flex-direction:column}.ai-heuristic-popover p{font-size:20px;margin:30px;line-height:2}' +
     '@media(prefers-color-scheme:dark){body{background:#111722;color:#f2f5fa}article{background:#202735}h2{color:#b8c4d8}}' +
     '</style><h1>AI Detected · Synthetic layout checks</h1><main>' + samples.map(([id,text,width]) =>
-      '<article data-urn="urn:li:activity:'+id+'" id="'+id+'"><h2>'+id+' · '+width+'px container</h2><div class="host" style="width:'+width+'px"><div class="feed-shared-inline-show-more-text">'+text+'</div></div></article>').join('') + '</main></html>';
+      '<article data-urn="urn:li:activity:'+id+'" id="'+id+'">'+(id==='flex'?'<div>Followed by <a href="/in/someone-else"><strong>Another person</strong></a></div>':'')+'<h2'+(id==='flex'?' style="display:grid;grid-template-columns:minmax(0,1fr) max-content"':'')+'><a href="/in/example-'+id+'">'+(id==='flex'?'<div>Example '+id+'</div>':'Example '+id)+'</a></h2><div class="host" style="width:'+width+'px"><div class="feed-shared-inline-show-more-text">'+text+'</div></div></article>').join('') + '</main></html>';
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.unrouteAll({behavior:'wait'});
@@ -42,7 +42,11 @@ async (page) => {
   const measure = () => page.locator('.ai-heuristic-badge').evaluateAll(nodes => nodes.map(b => {
     const r=b.getBoundingClientRect(),p=b.parentElement.getBoundingClientRect(),style=getComputedStyle(b);
     const post=b.closest('article').querySelector('.feed-shared-inline-show-more-text');
+    const author=b.parentElement.querySelector('a')?.getBoundingClientRect();
     return {id:b.closest('article').id,text:b.textContent,tone:b.dataset.cueTone,width:r.width,height:r.height,lineHeight:parseFloat(getComputedStyle(post).lineHeight),parentWidth:p.width,
+      header:b.parentElement.localName==='h2',beforeText:r.bottom<=post.getBoundingClientRect().top+1,insideLink:Boolean(b.closest('a')),
+      gridArea:b.style.gridArea,
+      besideAuthor:Boolean(author&&r.left>=author.right-1&&r.top<author.bottom&&r.bottom>author.top),
       color:style.color,background:style.backgroundColor,border:style.borderStyle,
       overflow:r.left<p.left-1 || r.right>p.right+1 || b.scrollWidth>b.clientWidth+1 || b.scrollHeight>b.clientHeight+1,
       childOverflow:[...b.children].some(c=>{const q=c.getBoundingClientRect();return q.left<r.left-1||q.right>r.right+1||q.top<r.top-1||q.bottom>r.bottom+1;})};
@@ -68,17 +72,19 @@ async (page) => {
     assert(badges.length===4,'only matched samples get stamps');
     assert(badges.every(b=>!b.overflow&&!b.childOverflow),'overflow: '+JSON.stringify({spec,badges}));
     assert(badges.every(b=>b.text==='AI Detected'),'stamp label');
+    assert(badges.every(b=>b.header&&b.beforeText&&b.besideAuthor&&!b.insideLink),'stamp must be beside the author above the post text: '+JSON.stringify(badges));
+    assert(badges.find(b=>b.id==='flex').gridArea==='1 / 2','one-item author grids use the same row');
     assert(badges.every(b=>Math.abs(b.height-b.lineHeight)<1),'stamp height must match post line height: '+JSON.stringify(badges));
     assert(badges.find(b=>b.id==='high').tone==='high' && badges.find(b=>b.id==='moderate').tone==='moderate','levels');
     assert(badges.find(b=>b.id==='high').border==='double','high has a non-color cue');
     results.push({spec,badges});
     await page.screenshot({path:output+'/stamp-'+spec.name+'.png',fullPage:true});
   }
-  await page.locator('#flex .host').evaluate(n=>n.style.width='80px');
+  await page.locator('#moderate h2').evaluate(n=>n.style.width='80px');
   await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
-  const compressed = (await measure()).find(b=>b.id==='flex');
+  const compressed = (await measure()).find(b=>b.id==='moderate');
   assert(!compressed.overflow&&!compressed.childOverflow&&compressed.height===compressed.lineHeight,'80px nested reply stamp');
-  await page.locator('#flex .host').evaluate(n=>n.style.width='210px');
+  await page.locator('#moderate h2').evaluate(n=>n.style.width='');
   await page.setViewportSize({width:1280,height:1000});
   await page.emulateMedia({colorScheme:'light',reducedMotion:'no-preference'});
   await page.locator('.feed-shared-inline-show-more-text').evaluateAll(nodes=>nodes.forEach(n=>n.style.fontSize='16px'));

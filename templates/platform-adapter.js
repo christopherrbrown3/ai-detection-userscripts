@@ -27,10 +27,10 @@ function createPlatformAdapter() {
       // Identify platform-specific quoted/reposted cards before reading text.
       // This helper already preserves lists/lines and excludes standard quotes,
       // code, controls, composers, and our own UI. Do not mutate the site's text.
-      return { ...aiHeuristicReadContent(body), host };
+      return { ...aiHeuristicReadContent(body), host, textHost: body };
     },
     placeBadge(element, badge, kind, content) {
-      content.host.appendChild(badge);
+      aiHeuristicPlaceHeaderBadge(element, badge, content.host, content.textHost);
     }
   };
 }

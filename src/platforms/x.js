@@ -37,18 +37,10 @@ function createPlatformAdapter() {
     extractContent(element) {
       return tweetText(element);
     },
-    placeBadge(element, badge) {
-      const header = element.querySelector('div[data-testid="User-Name"]');
-      if (header) {
-        header.appendChild(badge);
-        return;
-      }
-      const text = element.querySelector('div[data-testid="tweetText"]');
-      if (text && text.parentElement) {
-        text.parentElement.insertBefore(badge, text);
-        return;
-      }
-      element.insertBefore(badge, element.firstChild);
+    placeBadge(element, badge, kind, content) {
+      const header = Array.from(element.querySelectorAll('div[data-testid="User-Name"]')).find(node =>
+        node.closest(postSelector) === element && !node.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"], div[role="link"]'));
+      aiHeuristicPlaceHeaderBadge(element, badge, header, content.host);
     }
   };
 }

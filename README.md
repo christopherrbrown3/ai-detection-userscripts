@@ -41,7 +41,7 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-Posts with matched patterns get a small **AI Detected** stamp. Its height matches the post's text line height. Posts with no matches, or text the English rules cannot assess, have **no badge**.
+Posts with matched patterns get a small **AI Detected** stamp beside the title or author at the top of the post. If a recognizable header is unavailable, the stamp sits above the text. Its height matches the post's text line height. Posts with no matches, or text the English rules cannot assess, have **no badge**.
 
 - **Orange / moderate:** 1–2 of the six pattern families match.
 - **Red / high:** 3–6 families match. A double border also distinguishes high signal levels without relying only on color.
@@ -58,7 +58,7 @@ The **Style cue settings** button remains available when every badge is hidden. 
 - comments/replies on or off
 - hide signals in short samples
 
-Zero-match and unassessed posts always stay unbadged. Older saved settings remain readable; the old zero-match visibility preference no longer changes this behavior. See the [0.9 stamp validation report](docs/stamp-validation.md) for verification and limits.
+Zero-match and unassessed posts always stay unbadged. Older saved settings remain readable; the old zero-match visibility preference no longer changes this behavior. See the [0.9 stamp validation report](docs/stamp-validation.md) and [0.9.1 header placement checks](docs/header-stamp-validation.md) for verification and limits.
 
 ## Privacy
 
