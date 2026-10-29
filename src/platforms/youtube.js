@@ -103,7 +103,10 @@ function createPlatformAdapter() {
     },
     placeBadge(element, badge, kind, content) {
       if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');
-      content.host.insertAdjacentElement('afterend', badge);
+      const selector = element.matches(descriptionSelector) ? 'h1' : '#author-text, #author-name, #header-author, #header, h3';
+      const header = ownedNodes(element, selector).find(node =>
+        !node.closest(excludedContext) && !content.host.contains(node) && Boolean(node.compareDocumentPosition(content.host) & 4));
+      aiHeuristicPlaceHeaderBadge(element, badge, header, content.host);
     }
   };
 }

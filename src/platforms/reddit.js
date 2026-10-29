@@ -85,30 +85,14 @@ function createPlatformAdapter() {
     extractContent(element, kind) {
       return kind === 'comment' ? bestOwnedText(element, commentTextSelector, 'comment') : postText(element);
     },
-    placeBadge(element, badge, kind) {
-      if (kind === 'comment') {
-        const tagline = element.querySelector('p.tagline');
-        if (tagline) {
-          tagline.appendChild(badge);
-          return;
-        }
-        const header = element.querySelector('[data-testid="comment_author_link"], [data-testid="comment-author-link"], header');
-        if (header && header.parentElement) {
-          header.parentElement.appendChild(badge);
-          return;
-        }
-      }
-      const oldTitle = element.querySelector('a.title');
-      if (oldTitle && oldTitle.parentElement) {
-        oldTitle.parentElement.insertBefore(badge, oldTitle.nextSibling);
-        return;
-      }
-      const header = element.querySelector('[data-testid="post-author-link"], header, h1, h3');
-      if (header && header.parentElement) {
-        header.parentElement.appendChild(badge);
-        return;
-      }
-      element.insertBefore(badge, element.firstChild);
+    placeBadge(element, badge, kind, content) {
+      const selector = kind === 'comment'
+        ? 'p.tagline, [data-testid="comment_author_link"], [data-testid="comment-author-link"], [slot="commentMeta"], header'
+        : titleSelector + ', [data-testid="post-author-link"], header';
+      const header = Array.from(element.querySelectorAll(selector)).find(node =>
+        belongsTo(element, node, kind) && !node.closest('blockquote, pre, code, [hidden], [aria-hidden="true"]') &&
+        (!content.host || !content.host.contains(node) || content.host === node));
+      aiHeuristicPlaceHeaderBadge(element, badge, header, content.host);
     }
   };
 }

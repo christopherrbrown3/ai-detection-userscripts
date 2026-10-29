@@ -146,8 +146,13 @@ function createPlatformAdapter() {
       return { text, excluded, host: bodies[bodies.length - 1] };
     },
     placeBadge(element, badge, kind, content) {
-      // Keep the badge beside the analyzed text; the shared reader excludes UI.
-      content.host.appendChild(badge);
+      const textHost = kind === 'comment' ? commentBodies(element)[0] || content.host : content.host;
+      const header = [...element.querySelectorAll(kind === 'comment' ? 'h3, h4, a[href]' : 'h2, h3, h4')].find(node =>
+        !textHost.contains(node) && Boolean(node.compareDocumentPosition(textHost) & 4) &&
+        node.closest(articleSelector) === (element.matches(articleSelector) ? element : null) &&
+        !node.closest(excludedContext + ', blockquote, q') &&
+        !commentLink(node) && aiHeuristicTextContent(node).trim());
+      aiHeuristicPlaceHeaderBadge(element, badge, header, textHost);
     }
   };
 }

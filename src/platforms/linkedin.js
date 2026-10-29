@@ -101,19 +101,25 @@ function createPlatformAdapter() {
       return bestOwnedText(element, kind === 'comment' ? commentTextSelector : postTextSelector, kind);
     },
     placeBadge(element, badge, kind, content) {
-      if (kind === 'comment') {
-        const textHost = element.querySelector(commentTextSelector);
-        if (textHost && textHost.parentElement) {
-          textHost.parentElement.insertBefore(badge, textHost);
-          return;
-        }
-      }
       const textHost = content && content.host || findPostTextHost(element);
-      if (textHost && textHost.parentElement) {
-        textHost.parentElement.insertBefore(badge, textHost.nextSibling);
-        return;
+      const selectors = kind === 'comment'
+        ? ['.comments-comment-meta__description-title', '.comments-comment-entity__author', '.comments-comment-item__post-meta a[href]']
+        : ['.update-components-actor__title', '.update-components-actor__name', '.feed-shared-actor__name', '.update-components-actor__meta',
+          // Modern author links contain the name/degree in block text. Prefer
+          // them over the earlier inline "followed by" or reaction context.
+          'a[href*="/in/"]:has(p), a[href*="/company/"]:has(p), a[href*="/showcase/"]:has(p)',
+          'a[href*="/in/"]:has(> div), a[href*="/company/"]:has(> div), a[href*="/showcase/"]:has(> div)',
+          'h1, h2, h3'];
+      let header;
+      for (const selector of selectors) {
+        header = Array.from(element.querySelectorAll(selector)).find(node =>
+          (!textHost || (!textHost.contains(node) && Boolean(node.compareDocumentPosition(textHost) & 4))) &&
+          !node.closest('blockquote, pre, code, .update-components-mini-update-v2, [hidden], [aria-hidden="true"]') &&
+          (kind === 'comment' ? node.closest(commentSelector) === element : !node.closest(commentSelector)) &&
+          aiHeuristicTextContent(node).trim());
+        if (header) break;
       }
-      element.insertBefore(badge, element.firstChild);
+      aiHeuristicPlaceHeaderBadge(element, badge, header, textHost);
     }
   };
 }

@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         YouTube AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.9.0
+// @version      0.9.1
 // @description  Adds opt-in, local writing-style cues to YouTube descriptions, comments, replies, and channel Posts.
 // @author       christopherrbrown3
 // @license      MIT
@@ -947,6 +947,37 @@ function aiHeuristicTextContent(node) {
   return aiHeuristicReadContent(node).text;
 }
 
+// Keep controls outside links/buttons owned by the site. Adapters choose a
+// header belonging to this post; unknown layouts fall back above its text.
+function aiHeuristicPlaceHeaderBadge(element, badge, header, body) {
+  let parent, before;
+  if (header && element.contains(header)) {
+    const interactive = header.closest('a, button, [role="link"], [role="button"]');
+    if (interactive && element.contains(interactive) && interactive !== element) {
+      parent = interactive.parentElement;
+      before = interactive.nextSibling;
+    } else if (!interactive) {
+      parent = header;
+      before = null;
+    }
+  }
+  const inHeader = Boolean(parent);
+  if (!parent) {
+    parent = body && body !== element && element.contains(body) ? body.parentElement : element;
+    before = parent === element && (!body || body === element) ? element.firstChild : body;
+  }
+  // Mutation rescans may discover a header after the text. Reposition only
+  // when necessary so our own DOM writes do not perpetually trigger rescans.
+  if (badge.parentElement === parent && (before === badge || badge.nextSibling === before)) return;
+  const singleGridItem = inHeader && parent !== header && Array.from(parent.children).filter(node => node !== badge).length === 1 &&
+    window.getComputedStyle(parent).display === 'grid';
+  parent.insertBefore(badge, before);
+  badge.dataset.placement = inHeader ? 'header' : 'before-text';
+  // Current LinkedIn author links occupy a one-item grid. Its second column
+  // puts the stamp beside the name without rewriting the site's layout.
+  badge.style.gridArea = singleGridItem ? '1 / 2' : '';
+}
+
 function startAIHeuristic(platformAdapter, modelBundle, options) {
   'use strict';
   options = options || {};
@@ -1035,6 +1066,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-style: double;
       border-width: 3px;
       padding: 0 4px;
+    }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
+      margin-inline-start: 6px;
+      max-width: calc(100% - 6px);
+      vertical-align: middle;
     }
     button.ai-heuristic-badge[data-ai-heuristic-ui]:hover,
     button.ai-heuristic-badge[data-ai-heuristic-ui][aria-expanded="true"] {
@@ -1751,6 +1787,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
+      if (previous.badge) adapter.placeBadge(element, previous.badge, kind, content);
       if (previous.badge && previous.textHost !== textHost) {
         previous.textHost = textHost;
         sizeStamp(previous.badge, textHost);
@@ -2373,12 +2410,15 @@ function createPlatformAdapter() {
     },
     placeBadge(element, badge, kind, content) {
       if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');
-      content.host.insertAdjacentElement('afterend', badge);
+      const selector = element.matches(descriptionSelector) ? 'h1' : '#author-text, #author-name, #header-author, #header, h3';
+      const header = ownedNodes(element, selector).find(node =>
+        !node.closest(excludedContext) && !content.host.contains(node) && Boolean(node.compareDocumentPosition(content.host) & 4));
+      aiHeuristicPlaceHeaderBadge(element, badge, header, content.host);
     }
   };
 }
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{}}, {version:"0.9.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{}}, {version:"0.9.1",distribution:"targeted"});
 })();

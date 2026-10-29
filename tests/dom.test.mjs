@@ -64,7 +64,7 @@ test('LinkedIn supports the current mainFeed DOM', () => {
   const badge = post.querySelector('.ai-heuristic-badge');
   const text = post.querySelector('[data-testid="expandable-text-box"]');
   assert.ok(badge);
-  assert.equal(badge.previousElementSibling, text, 'badge should sit inside the post directly after its text');
+  assert.equal(badge.nextElementSibling, text, 'a post without a header gets a stamp above its text');
   assert.ok(__controller.getAnalysis(post).metrics.wordCount > 20);
   dom.window.close();
 });
@@ -85,7 +85,7 @@ test('LinkedIn supports profile recent-activity posts', () => {
   const post = document.querySelector('#activity-post');
   const badge = post.querySelector('.ai-heuristic-badge');
   assert.ok(badge);
-  assert.equal(badge.previousElementSibling, post.querySelector('.feed-shared-inline-show-more-text'));
+  assert.equal(badge.parentElement, post.querySelector('.update-components-actor__meta'));
   assert.ok(__controller.getAnalysis(post).metrics.wordCount > 20);
   dom.window.close();
 });
@@ -108,7 +108,7 @@ test('LinkedIn falls back safely when activity commentary classes are generated'
   const post = document.querySelector('#generated-post');
   const badge = post.querySelector('.ai-heuristic-badge');
   assert.ok(badge);
-  assert.equal(badge.previousElementSibling, post.querySelector('.generated-a'));
+  assert.equal(badge.nextElementSibling, post.querySelector('.generated-a'));
   assert.ok(__controller.getAnalysis(post).metrics.wordCount > 20);
   assert.ok(__controller.getAnalysis(post).metrics.wordCount < 60, 'actor and engagement text must stay excluded');
   dom.window.close();

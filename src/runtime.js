@@ -44,6 +44,37 @@ function aiHeuristicTextContent(node) {
   return aiHeuristicReadContent(node).text;
 }
 
+// Keep controls outside links/buttons owned by the site. Adapters choose a
+// header belonging to this post; unknown layouts fall back above its text.
+function aiHeuristicPlaceHeaderBadge(element, badge, header, body) {
+  let parent, before;
+  if (header && element.contains(header)) {
+    const interactive = header.closest('a, button, [role="link"], [role="button"]');
+    if (interactive && element.contains(interactive) && interactive !== element) {
+      parent = interactive.parentElement;
+      before = interactive.nextSibling;
+    } else if (!interactive) {
+      parent = header;
+      before = null;
+    }
+  }
+  const inHeader = Boolean(parent);
+  if (!parent) {
+    parent = body && body !== element && element.contains(body) ? body.parentElement : element;
+    before = parent === element && (!body || body === element) ? element.firstChild : body;
+  }
+  // Mutation rescans may discover a header after the text. Reposition only
+  // when necessary so our own DOM writes do not perpetually trigger rescans.
+  if (badge.parentElement === parent && (before === badge || badge.nextSibling === before)) return;
+  const singleGridItem = inHeader && parent !== header && Array.from(parent.children).filter(node => node !== badge).length === 1 &&
+    window.getComputedStyle(parent).display === 'grid';
+  parent.insertBefore(badge, before);
+  badge.dataset.placement = inHeader ? 'header' : 'before-text';
+  // Current LinkedIn author links occupy a one-item grid. Its second column
+  // puts the stamp beside the name without rewriting the site's layout.
+  badge.style.gridArea = singleGridItem ? '1 / 2' : '';
+}
+
 function startAIHeuristic(platformAdapter, modelBundle, options) {
   'use strict';
   options = options || {};
@@ -132,6 +163,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-style: double;
       border-width: 3px;
       padding: 0 4px;
+    }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
+      margin-inline-start: 6px;
+      max-width: calc(100% - 6px);
+      vertical-align: middle;
     }
     button.ai-heuristic-badge[data-ai-heuristic-ui]:hover,
     button.ai-heuristic-badge[data-ai-heuristic-ui][aria-expanded="true"] {
@@ -848,6 +884,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
+      if (previous.badge) adapter.placeBadge(element, previous.badge, kind, content);
       if (previous.badge && previous.textHost !== textHost) {
         previous.textHost = textHost;
         sizeStamp(previous.badge, textHost);
