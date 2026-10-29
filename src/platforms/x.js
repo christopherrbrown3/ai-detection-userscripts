@@ -16,7 +16,7 @@ function createPlatformAdapter() {
       if (candidate.closest('article[role="article"]') !== element) return;
       const quote = candidate.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"], div[role="link"]');
       if (quote && element.contains(quote)) { quotes += 1; return; }
-      if (!best) best = aiHeuristicReadContent(candidate);
+      if (!best) best = { ...aiHeuristicReadContent(candidate), host: candidate };
     });
     best = best || { text: '', excluded: { quotes: 0, code: 0 } };
     best.excluded.quotes += quotes;

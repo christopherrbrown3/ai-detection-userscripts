@@ -1,11 +1,11 @@
-"""Build an isolated synthetic layout check against the 0.6.0 release."""
+"""Build an isolated synthetic layout check against the 0.8.0 release."""
 from pathlib import Path
 import json
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 baseline = subprocess.check_output(
-    ["git", "show", "308ab617:ai-style-cues.userscripts.user.js"], cwd=ROOT, text=True
+    ["git", "show", "98a1573:ai-style-cues.userscripts.user.js"], cwd=ROOT, text=True
 )
 sources = {"baseline": baseline, "current": (ROOT / "ai-style-cues.userscripts.user.js").read_text()}
 for key in sources:

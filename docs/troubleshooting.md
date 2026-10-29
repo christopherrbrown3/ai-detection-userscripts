@@ -2,15 +2,17 @@
 
 ## No badges appear
 
+Posts with no matched patterns and text the English rules cannot assess intentionally have no badge in 0.9. An absent badge does not establish human authorship.
+
 1. Confirm the script is enabled in Userscripts.
 2. In Safari settings, grant the Userscripts extension access to the affected website.
 3. Refresh the page after installation or update.
-4. Check whether assessed posts with no cues or short/unassessed samples are hidden in the badge settings. The **Style cue settings** button is always available. Confirm **Enable style cues on this site** is on; messaging routes are intentionally inactive.
-5. Scroll the post into or near the viewport; offscreen posts wait until they approach it. Short English samples can still show matched cues, with **Short sample** on the badge.
+4. Check whether **Hide signals in short samples** is enabled. The **Style cue settings** button is always available. Confirm **Enable style cues on this site** is on; messaging routes are intentionally inactive.
+5. Scroll the post into or near the viewport; offscreen posts wait until they approach it. Short English samples can still show matched cues, with **Short sample** in details and the accessible name.
 
-## A badge says “not assessed”
+## Very short or non-English posts have no stamp
 
-The English cue rules could not establish enough language evidence. The script deliberately distinguishes this from zero matched patterns. Very short English fragments, multilingual text, and text consisting only of quotations or code may receive this status. The details panel explains the reason and reports excluded material.
+The English cue rules need enough language evidence. Very short fragments, multilingual text, and text consisting only of quotations or code may remain unassessed and therefore have no stamp. Assessed short text can show a stamp when patterns match; its details report the short-sample limitation.
 
 ## Comments or replies are missing
 
@@ -44,7 +46,7 @@ Instagram, Threads, and Bluesky still require their own adapters. See [supported
 
 ## Reset settings
 
-For Facebook, use **Style cue settings** to restore the defaults: site analysis off, comments/replies on, and both hide filters off. Its preferences live in the userscript manager, so clearing Facebook website storage does not reset them. A manager that lacks `GM.getValue`/`GM.setValue`, or refuses access, shows a persistence notice and uses page/tab preferences instead.
+For Facebook, use **Style cue settings** to restore the defaults: site analysis off, comments/replies on, and **Hide signals in short samples** off. Its preferences live in the userscript manager, so clearing Facebook website storage does not reset them. A manager that lacks `GM.getValue`/`GM.setValue`, or refuses access, shows a persistence notice and uses page/tab preferences instead.
 
 For LinkedIn, X/Twitter, Reddit, and YouTube, open Safari's website-data controls and remove local storage for the affected site, or run this in that site's developer console:
 

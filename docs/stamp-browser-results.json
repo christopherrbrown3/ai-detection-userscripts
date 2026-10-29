@@ -1,0 +1,320 @@
+{
+  "browser": "156.0.8078.48",
+  "network": "Synthetic HTML; other requests blocked.",
+  "injection": "Isolated world under script-src none",
+  "before": [
+    {
+      "id": "none",
+      "text": "AI Score",
+      "tone": "neutral",
+      "width": 130.578125,
+      "height": 30,
+      "lineHeight": 24,
+      "parentWidth": 280,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.963529 0.967294 0.972706)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    },
+    {
+      "id": "moderate",
+      "text": "AI Score",
+      "tone": "matched",
+      "width": 130.578125,
+      "height": 30,
+      "lineHeight": 24,
+      "parentWidth": 280,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.948706 0.963294 0.995294)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    },
+    {
+      "id": "high",
+      "text": "AI Score",
+      "tone": "matched",
+      "width": 130.578125,
+      "height": 30,
+      "lineHeight": 24,
+      "parentWidth": 280,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.948706 0.963294 0.995294)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    },
+    {
+      "id": "short",
+      "text": "AI ScoreShort sample",
+      "tone": "neutral",
+      "width": 140,
+      "height": 52.375,
+      "lineHeight": 24,
+      "parentWidth": 140,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.963529 0.967294 0.972706)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    },
+    {
+      "id": "uncertain",
+      "text": "AI Score: not assessedLanguage uncertain",
+      "tone": "neutral",
+      "width": 140,
+      "height": 68.5625,
+      "lineHeight": 24,
+      "parentWidth": 140,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.963529 0.967294 0.972706)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    },
+    {
+      "id": "flex",
+      "text": "AI Score",
+      "tone": "matched",
+      "width": 130.578125,
+      "height": 30,
+      "lineHeight": 24,
+      "parentWidth": 210,
+      "color": "rgb(23, 32, 51)",
+      "background": "color(srgb 0.948706 0.963294 0.995294)",
+      "border": "solid",
+      "overflow": false,
+      "childOverflow": false
+    }
+  ],
+  "results": [
+    {
+      "spec": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 1000,
+        "colorScheme": "light",
+        "font": 16
+      },
+      "badges": [
+        {
+          "id": "moderate",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 280,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "high",
+          "text": "AI Detected",
+          "tone": "high",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 280,
+          "color": "rgb(176, 30, 41)",
+          "background": "rgb(255, 240, 241)",
+          "border": "double",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "short",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 140,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "flex",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 210,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        }
+      ]
+    },
+    {
+      "spec": {
+        "name": "narrow-dark",
+        "width": 390,
+        "height": 844,
+        "colorScheme": "dark",
+        "font": 16
+      },
+      "badges": [
+        {
+          "id": "moderate",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 280,
+          "color": "rgb(255, 179, 107)",
+          "background": "rgb(48, 34, 23)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "high",
+          "text": "AI Detected",
+          "tone": "high",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 280,
+          "color": "rgb(255, 146, 154)",
+          "background": "rgb(50, 29, 34)",
+          "border": "double",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "short",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 140,
+          "color": "rgb(255, 179, 107)",
+          "background": "rgb(48, 34, 23)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "flex",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 89,
+          "height": 24,
+          "lineHeight": 24,
+          "parentWidth": 210,
+          "color": "rgb(255, 179, 107)",
+          "background": "rgb(48, 34, 23)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        }
+      ]
+    },
+    {
+      "spec": {
+        "name": "large-text",
+        "width": 390,
+        "height": 844,
+        "colorScheme": "light",
+        "font": 24
+      },
+      "badges": [
+        {
+          "id": "moderate",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 122.703125,
+          "height": 36,
+          "lineHeight": 36,
+          "parentWidth": 280,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "high",
+          "text": "AI Detected",
+          "tone": "high",
+          "width": 122.703125,
+          "height": 36,
+          "lineHeight": 36,
+          "parentWidth": 280,
+          "color": "rgb(176, 30, 41)",
+          "background": "rgb(255, 240, 241)",
+          "border": "double",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "short",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 122.703125,
+          "height": 36,
+          "lineHeight": 36,
+          "parentWidth": 140,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        },
+        {
+          "id": "flex",
+          "text": "AI Detected",
+          "tone": "moderate",
+          "width": 122.703125,
+          "height": 36,
+          "lineHeight": 36,
+          "parentWidth": 210,
+          "color": "rgb(152, 64, 0)",
+          "background": "rgb(255, 244, 232)",
+          "border": "solid",
+          "overflow": false,
+          "childOverflow": false
+        }
+      ]
+    }
+  ],
+  "compressed": {
+    "id": "flex",
+    "text": "AI Detected",
+    "tone": "moderate",
+    "width": 80,
+    "height": 36,
+    "lineHeight": 36,
+    "parentWidth": 80,
+    "color": "rgb(152, 64, 0)",
+    "background": "rgb(255, 244, 232)",
+    "border": "solid",
+    "overflow": false,
+    "childOverflow": false
+  },
+  "motion": {
+    "name": "aih-stamp-grow",
+    "duration": "0.18s",
+    "origin": "0px 0px"
+  },
+  "hover": true,
+  "keyboard": true,
+  "touch": false,
+  "forcedColors": true,
+  "reducedMotion": true,
+  "panelFits": true,
+  "errors": []
+}

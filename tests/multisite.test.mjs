@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { afterEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { bundleSource, closeDoms, evaluateBundle, loadFixture, loadGeneratedDom, registry } from './helpers.mjs';
+import { bundleSource, closeDoms, evaluateBundle, loadFixture, loadSignaledFixture, loadGeneratedDom, registry } from './helpers.mjs';
 
 afterEach(closeDoms);
 const wait = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -11,7 +11,7 @@ async function until(predicate, timeout = 2000) {
   while (!predicate() && Date.now() < deadline) await wait(10);
   assert.ok(predicate(), 'expected runtime state did not arrive');
 }
-const text = 'I tested the gate after work yesterday. The hinge needs oil but the latch still closes with a gentle push.';
+const text = 'Here are the key takeaways. In conclusion, I tested the gate after work yesterday. The hinge needs oil but the latch still closes with a gentle push.';
 const tweet = (id = 'tweet-1') => '<article role="article" id="' + id + '"><div data-testid="User-Name">Example</div><div data-testid="tweetText">' + text + '</div></article>';
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
@@ -59,7 +59,8 @@ test('every declared host dispatches exactly one matching adapter', () => {
     assert.equal(window.__lastSession.getStatus(), 'active');
     assert.equal(window.document.querySelectorAll('meta[data-ai-style-owner]').length, 1);
     assert.equal(window.document.querySelector('meta[data-ai-style-owner]').dataset.aiStyleOwner, entry.id);
-    assert.ok(window.document.querySelectorAll('.ai-heuristic-badge').length);
+    assert.ok(window.__controller.getStatus().running);
+    assert.ok(window.document.querySelector('.ai-heuristic-launcher'));
     window.close();
   }
 });
@@ -146,7 +147,7 @@ test('existing preferences survive per-site disable/re-enable and generated-buil
     resources=monitor(w);
     w.localStorage.setItem(key, JSON.stringify({analyzeComments:false,hideLow:true,sensitivity:'conservative',customLegacyField:17}));
   }});
-  assert.equal(window.document.querySelector('.ai-heuristic-badge'), null);
+  assert.ok(window.document.querySelector('.ai-heuristic-badge'), 'legacy hideLow does not hide matched posts');
   setEnabled(window, false);
   assert.equal(window.__controller.getStatus().running, false);
   assert.equal(resources.active(), 1);

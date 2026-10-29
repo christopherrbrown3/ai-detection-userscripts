@@ -99,7 +99,7 @@ function createPlatformAdapter() {
         content.excluded.quotes += [...element.querySelectorAll(postSelector)]
           .filter(quote => quote.parentElement?.closest(postSelector) === element).length;
       }
-      return { ...content, host: owned.host };
+      return { ...content, host: owned.host, textHost: owned.body };
     },
     placeBadge(element, badge, kind, content) {
       if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');

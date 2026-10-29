@@ -50,7 +50,7 @@ function createPlatformAdapter() {
       if (!belongsTo(root, candidate, kind)) return;
       if (candidate.closest('blockquote, pre, code')) return;
       const content = aiHeuristicReadContent(candidate);
-      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = content;
+      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = { ...content, host: candidate };
     });
     return best;
   }
@@ -62,6 +62,7 @@ function createPlatformAdapter() {
       if (body.text.toLowerCase().includes(title.text.toLowerCase()) && title.text.length >= 20) return body;
       return {
         text: title.text + '\n' + body.text,
+        host: body.host,
         excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
       };
     }

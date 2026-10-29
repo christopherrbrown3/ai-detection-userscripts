@@ -78,6 +78,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     ? 'This script manager cannot save preferences outside page storage. They may reset after reloading.' : '';
   let records = new WeakMap();
   let activePopover = null;
+  let popoverCloseTimer = null;
   let observer = null;
   let intersectionObserver = null;
   let queueTimer = null;
@@ -92,102 +93,75 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   const STYLE = `
     button.ai-heuristic-badge[data-ai-heuristic-ui] {
-      --aih-accent: #4f46e5;
-      --aih-accent-soft: rgba(79, 70, 229, .13);
-      --aih-border: rgba(15, 23, 42, .15);
-      --aih-bg: #ffffff;
-      --aih-text: #172033;
-      --aih-muted: #5c667a;
+      --aih-accent: #984000;
+      --aih-stamp-bg: #fff4e8;
       align-items: center;
-      background: var(--aih-bg);
-      background: color-mix(in srgb, var(--aih-bg) 94%, var(--aih-accent) 6%);
-      border: 1px solid var(--aih-border);
-      border-radius: 8px;
+      justify-content: center;
+      background: var(--aih-stamp-bg);
+      border: 1px solid currentColor;
+      border-radius: 2px;
       box-sizing: border-box;
-      color: var(--aih-text);
+      color: var(--aih-accent);
       cursor: pointer;
       display: inline-flex;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 12px;
-      font-weight: 650;
-      gap: 8px;
-      line-height: 1.35;
-      margin: 4px 0;
-      width: fit-content;
-      max-width: min(100%, 310px);
-      min-width: 0;
-      height: auto;
+      font-size: var(--aih-stamp-font-size, calc(var(--aih-post-font-size, 16px) * .625));
+      font-weight: 800;
+      line-height: 1;
+      height: var(--aih-post-line-height, 24px);
+      min-height: 0;
       max-height: none;
-      min-height: 30px;
-      padding: 5px 9px;
-      flex: 0 1 auto;
+      width: max-content;
+      max-width: 100%;
+      min-width: 0;
+      margin: 2px 0;
+      padding: 0 6px;
+      flex: 0 0 auto;
       align-self: flex-start;
       appearance: none;
       text-indent: 0;
-      text-transform: none;
-      letter-spacing: normal;
-      text-align: left;
-      transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
-      vertical-align: middle;
-      white-space: normal;
-      flex-wrap: wrap;
+      text-transform: uppercase;
+      letter-spacing: .055em;
+      text-align: center;
+      vertical-align: baseline;
+      white-space: nowrap;
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui]:hover {
-      border-color: color-mix(in srgb, var(--aih-accent) 45%, transparent);
-      box-shadow: 0 3px 14px rgba(15, 23, 42, .1);
-      transform: translateY(-1px);
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="high"] {
+      --aih-accent: #b01e29;
+      --aih-stamp-bg: #fff0f1;
+      border-style: double;
+      border-width: 3px;
+      padding: 0 4px;
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui]:focus-visible {
-      outline: 3px solid color-mix(in srgb, var(--aih-accent) 35%, transparent);
-      outline-offset: 2px;
-    }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"] { --aih-accent: #b45309; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"] { --aih-accent: #2563eb; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"] { --aih-accent: #7c3aed; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"] { --aih-accent: #475569; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"] { --aih-accent: #2563eb; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"] { --aih-accent: #7c3aed; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"] { --aih-accent: #0f766e; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="clear"] { --aih-accent: #15803d; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="caution"] { --aih-accent: #a16207; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="alert"] { --aih-accent: #b91c1c; }
-    .ai-heuristic-badge__dot {
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:hover,
+    button.ai-heuristic-badge[data-ai-heuristic-ui][aria-expanded="true"] {
       background: var(--aih-accent);
-      border-radius: 50%;
-      box-shadow: 0 0 0 3px var(--aih-accent-soft);
-      flex: 0 0 auto;
-      height: 7px;
-      width: 7px;
-    }
-    .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; font-weight: 700; }
-    .ai-heuristic-badge .ai-heuristic-badge__coverage { min-width: 0; color: var(--aih-muted); font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
-    .ai-heuristic-meter {
-      align-items: center;
-      display: inline-grid;
-      flex: 0 0 auto;
-      gap: 2px;
-      grid-template-columns: repeat(6, 7px);
-      vertical-align: middle;
-    }
-    .ai-heuristic-meter__segment {
-      background: transparent;
-      border: 1px solid var(--aih-muted);
-      border-radius: 2px;
-      box-sizing: border-box;
-      height: 11px;
-      width: 7px;
-    }
-    .ai-heuristic-meter__segment[data-filled="true"] {
-      background: var(--aih-accent);
+      color: var(--aih-stamp-bg);
       border-color: var(--aih-accent);
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
-    .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
-    .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:focus-visible {
+      outline: 2px solid var(--aih-accent);
+      outline-offset: 3px;
+    }
+    button.ai-heuristic-badge[data-ai-heuristic-ui] .ai-heuristic-badge__text {
+      color: inherit;
+      font: inherit;
+      line-height: 1;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      white-space: nowrap;
+      margin: 0;
+      padding: 0;
+    }
+    .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #984000; }
+    .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #b01e29; }
+    .ai-heuristic-popover[data-entry="stamp"] {
+      animation: aih-stamp-grow 180ms cubic-bezier(.16, 1, .3, 1) both;
+    }
+    @keyframes aih-stamp-grow {
+      from { opacity: 0; transform: scale(.86); }
+      to { opacity: 1; transform: scale(1); }
+    }
     .ai-heuristic-popover .ai-heuristic-popover__result {
       background: var(--aih-panel);
       border-radius: 8px;
@@ -201,7 +175,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
-    .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-popover .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
     .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
@@ -267,17 +241,6 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       letter-spacing: normal;
       text-transform: none;
     }
-    .ai-heuristic-popover[data-level="insufficient"] { --aih-accent: #64748b; }
-    .ai-heuristic-popover[data-level="cue-none"] { --aih-accent: #64748b; }
-    .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-popover[data-level="low"] { --aih-accent: #475569; }
-    .ai-heuristic-popover[data-level="moderate"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover[data-level="strong"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #0f766e; }
-    .ai-heuristic-popover[data-cue-tone="clear"] { --aih-accent: #15803d; }
-    .ai-heuristic-popover[data-cue-tone="caution"] { --aih-accent: #a16207; }
-    .ai-heuristic-popover[data-cue-tone="alert"] { --aih-accent: #b91c1c; }
     .ai-heuristic-popover__header {
       align-items: flex-start;
       border-bottom: 1px solid var(--aih-border);
@@ -319,8 +282,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       outline-offset: 2px;
     }
     .ai-heuristic-popover__body { padding: 14px 16px 16px; }
-    .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
-    .ai-heuristic-popover__notice {
+    .ai-heuristic-popover .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
+    .ai-heuristic-popover .ai-heuristic-popover__notice {
       background: color-mix(in srgb, var(--aih-accent) 7%, var(--aih-panel));
       border-radius: 8px;
       color: var(--aih-text);
@@ -374,7 +337,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       font: inherit;
       padding: 5px 7px;
     }
-    .ai-heuristic-popover__footer {
+    .ai-heuristic-popover .ai-heuristic-popover__footer {
       color: var(--aih-muted);
       font-size: 10px;
       margin: 13px 0 0;
@@ -386,11 +349,15 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     @media (prefers-color-scheme: dark) {
       button.ai-heuristic-badge[data-ai-heuristic-ui] {
-        --aih-bg: #161b26;
-        --aih-text: #edf1f8;
-        --aih-muted: #aab4c5;
-        --aih-border: rgba(226, 232, 240, .22);
+        --aih-accent: #ffb36b;
+        --aih-stamp-bg: #302217;
       }
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="high"] {
+        --aih-accent: #ff929a;
+        --aih-stamp-bg: #321d22;
+      }
+      .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #ffb36b; }
+      .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #ff929a; }
       .ai-heuristic-popover {
         --aih-bg: #151a24;
         --aih-panel: #202735;
@@ -399,38 +366,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-border: #343e50;
         box-shadow: 0 22px 65px rgba(0, 0, 0, .55);
       }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"],
-      .ai-heuristic-popover[data-level="insufficient"],
-      .ai-heuristic-popover[data-level="uncalibrated"],
-      .ai-heuristic-popover[data-level="cue-none"],
-      .ai-heuristic-popover[data-level="low"] { --aih-accent: #94a3b8; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"],
-      .ai-heuristic-popover[data-level="moderate"],
-      .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #60a5fa; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"],
-      .ai-heuristic-popover[data-level="strong"],
-      .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #a78bfa; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"],
-      .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #5eead4; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
-      .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #94a3b8; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
-      .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #60a5fa; }
     }
     @media (prefers-reduced-motion: reduce) {
-      button.ai-heuristic-badge[data-ai-heuristic-ui] { transition: none; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui]:hover { transform: none; }
+      .ai-heuristic-popover[data-entry="stamp"] { animation: none; }
     }
     @media (forced-colors: active) {
-      button.ai-heuristic-badge[data-ai-heuristic-ui], .ai-heuristic-popover { border: 1px solid ButtonText; forced-color-adjust: auto; }
-      .ai-heuristic-badge__dot { background: ButtonText; box-shadow: none; }
-      .ai-heuristic-meter__segment { background: Canvas; border-color: ButtonText; forced-color-adjust: none; }
-      .ai-heuristic-meter__segment[data-filled="true"] { background: ButtonText; border-color: ButtonText; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui], .ai-heuristic-popover { border-color: ButtonText; forced-color-adjust: auto; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui]:hover { background: Highlight; color: HighlightText; }
     }
   `;
 
@@ -523,24 +465,26 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    const cues = analysis.cueAssessment;
-    return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
+    return analysis.cueAssessment.families.length >= 3 ? 'high' : 'moderate';
   }
 
   function cueCount(cues) {
     return cues.families.length + '/' + cues.totalFamilies + ' cues';
   }
 
-  function createCueMeter(cues) {
-    const meter = createElement('span', 'ai-heuristic-meter');
-    // The button's accessible name already describes the exact family count.
-    meter.setAttribute('aria-hidden', 'true');
-    for (let index = 0; index < cues.totalFamilies; index += 1) {
-      const segment = createElement('span', 'ai-heuristic-meter__segment');
-      segment.dataset.filled = String(index < cues.families.length);
-      meter.appendChild(segment);
-    }
-    return meter;
+  function cancelPopoverClose() {
+    if (popoverCloseTimer !== null) window.clearTimeout(popoverCloseTimer);
+    popoverCloseTimer = null;
+  }
+
+  function schedulePopoverClose() {
+    cancelPopoverClose();
+    // Allow the pointer to cross the gap into the interactive details panel.
+    popoverCloseTimer = window.setTimeout(() => {
+      popoverCloseTimer = null;
+      if (activePopover && !activePopover.pinned &&
+        !activePopover.node.contains(document.activeElement)) closePopover(false);
+    }, 220);
   }
 
   function createBadge(analysis) {
@@ -553,25 +497,30 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
-    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
-    if (cues.assessed) {
-      badge.appendChild(createCueMeter(cues));
-    }
-    if (cues.coverage.level === 'short' || !cues.assessed) {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
-    }
-    const accessibleScore = cues.assessed
-      ? 'AI Score: ' + cues.families.length + ' of ' + cues.totalFamilies +
-        ' cue families matched. Authorship probability unavailable'
-      : label;
-    badge.setAttribute('aria-label', accessibleScore + '. ' + cues.coverage.text + '. Open details.');
-    badge.title = 'Open matched style cues. Authorship probability is unavailable; zero cues does not mean human-written.';
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
+    badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
+      cues.families.length + ' of ' + cues.totalFamilies + ' cue families matched. ' +
+      cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
+    badge.addEventListener('pointerenter', (event) => {
+      if (event.pointerType === 'touch') return;
+      cancelPopoverClose();
+      if (activePopover && (activePopover.badge === badge || activePopover.pinned)) return;
+      if (badge.isConnected) openPopover(badge, analysis, false);
+    });
+    badge.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'touch' && activePopover && activePopover.badge === badge) schedulePopoverClose();
+    });
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (activePopover && activePopover.badge === badge) closePopover(true);
-      else openPopover(badge, analysis);
+      if (activePopover && activePopover.badge === badge) {
+        if (activePopover.pinned) closePopover(true);
+        else {
+          cancelPopoverClose();
+          activePopover.pinned = true;
+          activePopover.node.querySelector('.ai-heuristic-popover__close').focus({ preventScroll: true });
+        }
+      } else openPopover(badge, analysis, true);
     });
     return badge;
   }
@@ -633,8 +582,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const checks = [
       ['enabled', 'Enable style cues on this site'],
       ['analyzeComments', 'Analyze comments and replies'],
-      ['hideInsufficient', 'Hide short or unassessed samples'],
-      ['hideLow', 'Hide assessed posts with no cues']
+      ['hideInsufficient', 'Hide signals in short samples']
     ];
     for (const [key, labelText] of checks) {
       const label = createElement('label', '', labelText);
@@ -701,12 +649,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
     document.body.appendChild(popover);
-    activePopover = { node: popover, badge: launcher };
+    activePopover = { node: popover, badge: launcher, pinned: true };
     positionPopover(popover, launcher);
     close.focus({ preventScroll: true });
   }
 
-  function openPopover(badge, analysis) {
+  function openPopover(badge, analysis, pinned) {
     closePopover(false);
     const popover = createElement('div', 'ai-heuristic-popover');
     popover.dataset.aiHeuristicUi = '1';
@@ -721,7 +669,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'AI Score');
+    const title = createElement('h2', '', 'AI Detected');
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -736,17 +684,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      cues.assessed ? cueCount(cues) + ' · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+      (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Each filled bar represents one family, regardless of how often it occurs. ' +
-        'These families are not equally predictive or statistically independent.'));
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Moderate means 1–2 families; high means 3 or more. ' +
+        'Repeated matches within one family count once.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
-      'Authorship probability is unavailable: no validated probability model is enabled for this display. ' +
-      'These cues are not the probability that AI wrote this text. Human writing can match them; AI writing can match none. They do not establish authorship.'));
+      'These are writing-pattern matches, not proof of AI authorship. Human writing can match them; AI writing can match none. ' +
+      'The level counts patterns, not the probability that AI wrote this text.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -790,9 +738,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
     popover.appendChild(body);
     document.body.appendChild(popover);
-    activePopover = { node: popover, badge };
+    activePopover = { node: popover, badge, pinned };
+    popover.addEventListener('pointerenter', cancelPopoverClose);
+    popover.addEventListener('pointerleave', schedulePopoverClose);
+    popover.addEventListener('focusin', cancelPopoverClose);
+    popover.addEventListener('focusout', schedulePopoverClose);
+    popover.addEventListener('click', () => {
+      if (activePopover && activePopover.node === popover) activePopover.pinned = true;
+    });
     positionPopover(popover, badge);
-    close.focus({ preventScroll: true });
+    popover.dataset.entry = 'stamp';
+    if (pinned) close.focus({ preventScroll: true });
   }
 
   function positionPopover(popover, badge) {
@@ -805,10 +761,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     else if (rect.left - 8 - width >= margin) left = rect.left - 8 - width;
     else left = clamp(rect.left, margin, window.innerWidth - width - margin);
     let top = rect.bottom + 8;
-    const height = popover.getBoundingClientRect().height;
+    const height = popover.offsetHeight;
     if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
     popover.style.left = `${left}px`;
     popover.style.top = `${top}px`;
+    popover.style.transformOrigin = `${clamp(rect.left + rect.width / 2 - left, 0, width)}px ${clamp(rect.top + rect.height / 2 - top, 0, height)}px`;
   }
 
   function clamp(value, low, high) {
@@ -816,6 +773,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function closePopover(restoreFocus) {
+    cancelPopoverClose();
     if (!activePopover) return;
     const { node, badge } = activePopover;
     node.remove();
@@ -827,8 +785,36 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function shouldHide(analysis) {
     const cues = analysis.cueAssessment;
-    return (settings.hideInsufficient && (cues.coverage.level === 'short' || !cues.assessed)) ||
-      (settings.hideLow && cues.assessed && !cues.families.length);
+    return !cues.assessed || !cues.families.length || (settings.hideInsufficient && cues.coverage.level === 'short');
+  }
+
+  function sizeStamp(badge, host) {
+    badge.style.removeProperty('--aih-stamp-font-size');
+    const style = window.getComputedStyle(host);
+    const fontSize = parseFloat(style.fontSize) || 16;
+    let lineHeight = parseFloat(style.lineHeight);
+    if (/^[\d.]+$/.test(style.lineHeight)) lineHeight *= fontSize;
+    if (style.lineHeight === 'normal') {
+      // "normal" depends on the host font. Measure its line box instead of
+      // assuming a multiplier that would make the stamp taller than the post.
+      const probe = createElement('span', '', 'M');
+      probe.dataset.aiHeuristicUi = '1';
+      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;display:block;font:inherit;line-height:normal;padding:0;border:0;margin:0;width:max-content;height:auto;';
+      host.appendChild(probe);
+      lineHeight = probe.getBoundingClientRect().height;
+      probe.remove();
+    }
+    if (!lineHeight || !Number.isFinite(lineHeight)) lineHeight = fontSize * 1.5;
+    badge.style.setProperty('--aih-post-font-size', fontSize + 'px');
+    badge.style.setProperty('--aih-post-line-height', lineHeight + 'px');
+    // Narrow nested replies still show the whole stamp on one line. Scale its
+    // lettering only when needed; the outer height continues to match the post.
+    const badgeStyle = window.getComputedStyle(badge);
+    const available = badge.clientWidth - (parseFloat(badgeStyle.paddingLeft) || 0) - (parseFloat(badgeStyle.paddingRight) || 0);
+    const textWidth = badge.firstElementChild.getBoundingClientRect().width;
+    if (available > 0 && textWidth > available) {
+      badge.style.setProperty('--aih-stamp-font-size', (fontSize * .625 * available / textWidth) + 'px');
+    }
   }
 
   function kindFor(element) {
@@ -846,6 +832,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     const content = adapter.extractContent(element, kind) || { text: '', excluded: { quotes: 0, code: 0 } };
     const { text, excluded } = content;
+    const textHost = content.textHost || content.host || element;
     if (typeof text !== 'string' || !excluded || !['quotes', 'code'].every((key) =>
       Number.isInteger(excluded[key]) && excluded[key] >= 0)) throw new Error('Invalid adapter content');
     const previous = records.get(element);
@@ -860,7 +847,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
-      (!previous.badge || previous.badge.isConnected)) return;
+      (!previous.badge || previous.badge.isConnected)) {
+      if (previous.badge && previous.textHost !== textHost) {
+        previous.textHost = textHost;
+        sizeStamp(previous.badge, textHost);
+      }
+      return;
+    }
     if (previous && previous.badge) {
       if (activePopover && activePopover.badge === previous.badge) closePopover(false);
       previous.badge.remove();
@@ -876,9 +869,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       return;
     }
     const badge = createBadge(analysis);
-    try { adapter.placeBadge(element, badge, kind, content); }
+    try {
+      adapter.placeBadge(element, badge, kind, content);
+      sizeStamp(badge, textHost);
+    }
     catch (error) { badge.remove(); throw error; }
-    records.set(element, { fingerprint, text, badge, analysis });
+    records.set(element, { fingerprint, text, badge, analysis, textHost });
   }
 
   function flushQueue() {
@@ -1113,8 +1109,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     if (event.key === 'Escape' && activePopover) closePopover(true);
   }
 
-  function onViewportChange() {
+  function onViewportChange(event) {
     closePopover(false);
+    if (event.type === 'resize') {
+      for (const element of tracked) {
+        const record = records.get(element);
+        if (record && record.badge && record.textHost.isConnected) sizeStamp(record.badge, record.textHost);
+      }
+    }
   }
 
   function startAnalysis() {

@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.8.0
+// @version      0.9.0
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
@@ -44,7 +44,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'browser-cues-v4';
+  const ANALYSIS_VERSION = 'browser-cues-v5';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -346,8 +346,15 @@ function createDetectorEngine(options) {
 
     if (assessed) {
       const references = modelReferenceSpans(parsed);
-      if (references.length) {
-        add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
+      // Recognizable serialization remnants, not ordinary Markdown, Unicode,
+      // or a model name. Quoted/code examples are masked by the shared parser.
+      const artifacts = Array.from(raw.matchAll(/<\|im_start\|>assistant\b|<\|start_header_id\|>assistant<\|end_header_id\|>|<\|start\|>assistant<\|message\|>|\uE200cite\uE202turn\d+(?:search|view|news|file)\d+[^\uE201\n]{0,180}\uE201/g),
+        (match) => ({ start: match.index, end: match.index + match[0].length }));
+      if (references.length || artifacts.length) {
+        add('self-disclosure', artifacts.length ? 'Model reference or assistant artifact' : 'Explicit model reference',
+          artifacts.length ? 'Recognizable assistant-role or citation markup outside quotations or code. It may also be reproduced by a person.' :
+            'Model-reference wording outside quotations or code.',
+          [...references, ...artifacts].sort((a, b) => a.start - b.start));
       }
 
       const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES]);
@@ -355,10 +362,18 @@ function createDetectorEngine(options) {
       // One everyday phrase or promotional adjective is too little to flag.
       const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
       const distinctBuzz = new Set(buzz.map((span) => raw.slice(span.start, span.end).toLowerCase()));
-      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2)) {
+      // Repeated contrast templates are another framing cue, never another vote
+      // for the same family. A lone "not X, but Y" remains unremarkable.
+      const contrasts = Array.from(normalizeApostrophes(raw).matchAll(/\bnot(?:\s+just)?\b[^.!?\n]{6,100}[,;—–]\s*but\b[^.!?\n]{6,100}|\b(?:it|this|that)(?:\s+is(?:\s+not|n't)|'s\s+not)\b[^.!?\n]{6,100}[.!?]\s+(?:it(?:'s| is)|this is|that is)\b[^.!?\n]{6,100}/gi),
+        (match) => ({ start: match.index, end: match.index + match[0].length }))
+        .filter((span) => !parsed.excluded.some((excluded) => span.start < excluded.end && span.end > excluded.start) &&
+          !parsed.sentences.some((sentence) => sentence.isList && span.start < sentence.end && span.end > sentence.start));
+      const repeatedContrast = proseWordCount >= 40 && contrasts.length >= 2;
+      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2) || repeatedContrast) {
         add('formulaic-framing', 'Stock framing phrases',
-          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.',
-          [...framing, ...buzz].sort((a, b) => a.start - b.start));
+          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.' +
+            (repeatedContrast ? ' ' + contrasts.length + ' repeated contrast constructions.' : ''),
+          [...framing, ...buzz, ...(repeatedContrast ? contrasts : [])].sort((a, b) => a.start - b.start));
       }
 
       const openingGroups = new Map();
@@ -981,6 +996,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     ? 'This script manager cannot save preferences outside page storage. They may reset after reloading.' : '';
   let records = new WeakMap();
   let activePopover = null;
+  let popoverCloseTimer = null;
   let observer = null;
   let intersectionObserver = null;
   let queueTimer = null;
@@ -995,102 +1011,75 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   const STYLE = `
     button.ai-heuristic-badge[data-ai-heuristic-ui] {
-      --aih-accent: #4f46e5;
-      --aih-accent-soft: rgba(79, 70, 229, .13);
-      --aih-border: rgba(15, 23, 42, .15);
-      --aih-bg: #ffffff;
-      --aih-text: #172033;
-      --aih-muted: #5c667a;
+      --aih-accent: #984000;
+      --aih-stamp-bg: #fff4e8;
       align-items: center;
-      background: var(--aih-bg);
-      background: color-mix(in srgb, var(--aih-bg) 94%, var(--aih-accent) 6%);
-      border: 1px solid var(--aih-border);
-      border-radius: 8px;
+      justify-content: center;
+      background: var(--aih-stamp-bg);
+      border: 1px solid currentColor;
+      border-radius: 2px;
       box-sizing: border-box;
-      color: var(--aih-text);
+      color: var(--aih-accent);
       cursor: pointer;
       display: inline-flex;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 12px;
-      font-weight: 650;
-      gap: 8px;
-      line-height: 1.35;
-      margin: 4px 0;
-      width: fit-content;
-      max-width: min(100%, 310px);
-      min-width: 0;
-      height: auto;
+      font-size: var(--aih-stamp-font-size, calc(var(--aih-post-font-size, 16px) * .625));
+      font-weight: 800;
+      line-height: 1;
+      height: var(--aih-post-line-height, 24px);
+      min-height: 0;
       max-height: none;
-      min-height: 30px;
-      padding: 5px 9px;
-      flex: 0 1 auto;
+      width: max-content;
+      max-width: 100%;
+      min-width: 0;
+      margin: 2px 0;
+      padding: 0 6px;
+      flex: 0 0 auto;
       align-self: flex-start;
       appearance: none;
       text-indent: 0;
-      text-transform: none;
-      letter-spacing: normal;
-      text-align: left;
-      transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
-      vertical-align: middle;
-      white-space: normal;
-      flex-wrap: wrap;
+      text-transform: uppercase;
+      letter-spacing: .055em;
+      text-align: center;
+      vertical-align: baseline;
+      white-space: nowrap;
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui]:hover {
-      border-color: color-mix(in srgb, var(--aih-accent) 45%, transparent);
-      box-shadow: 0 3px 14px rgba(15, 23, 42, .1);
-      transform: translateY(-1px);
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="high"] {
+      --aih-accent: #b01e29;
+      --aih-stamp-bg: #fff0f1;
+      border-style: double;
+      border-width: 3px;
+      padding: 0 4px;
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui]:focus-visible {
-      outline: 3px solid color-mix(in srgb, var(--aih-accent) 35%, transparent);
-      outline-offset: 2px;
-    }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"] { --aih-accent: #b45309; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"] { --aih-accent: #2563eb; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"] { --aih-accent: #7c3aed; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"] { --aih-accent: #475569; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"] { --aih-accent: #2563eb; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"] { --aih-accent: #7c3aed; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"] { --aih-accent: #0f766e; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="clear"] { --aih-accent: #15803d; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="caution"] { --aih-accent: #a16207; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="alert"] { --aih-accent: #b91c1c; }
-    .ai-heuristic-badge__dot {
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:hover,
+    button.ai-heuristic-badge[data-ai-heuristic-ui][aria-expanded="true"] {
       background: var(--aih-accent);
-      border-radius: 50%;
-      box-shadow: 0 0 0 3px var(--aih-accent-soft);
-      flex: 0 0 auto;
-      height: 7px;
-      width: 7px;
-    }
-    .ai-heuristic-badge__prefix { color: var(--aih-muted); font-weight: 750; }
-    .ai-heuristic-badge .ai-heuristic-badge__text { min-width: 0; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; font-weight: 700; }
-    .ai-heuristic-badge .ai-heuristic-badge__coverage { min-width: 0; color: var(--aih-muted); font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
-    .ai-heuristic-meter {
-      align-items: center;
-      display: inline-grid;
-      flex: 0 0 auto;
-      gap: 2px;
-      grid-template-columns: repeat(6, 7px);
-      vertical-align: middle;
-    }
-    .ai-heuristic-meter__segment {
-      background: transparent;
-      border: 1px solid var(--aih-muted);
-      border-radius: 2px;
-      box-sizing: border-box;
-      height: 11px;
-      width: 7px;
-    }
-    .ai-heuristic-meter__segment[data-filled="true"] {
-      background: var(--aih-accent);
+      color: var(--aih-stamp-bg);
       border-color: var(--aih-accent);
     }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
-    .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #64748b; }
-    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
-    .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #2563eb; }
+    button.ai-heuristic-badge[data-ai-heuristic-ui]:focus-visible {
+      outline: 2px solid var(--aih-accent);
+      outline-offset: 3px;
+    }
+    button.ai-heuristic-badge[data-ai-heuristic-ui] .ai-heuristic-badge__text {
+      color: inherit;
+      font: inherit;
+      line-height: 1;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      white-space: nowrap;
+      margin: 0;
+      padding: 0;
+    }
+    .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #984000; }
+    .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #b01e29; }
+    .ai-heuristic-popover[data-entry="stamp"] {
+      animation: aih-stamp-grow 180ms cubic-bezier(.16, 1, .3, 1) both;
+    }
+    @keyframes aih-stamp-grow {
+      from { opacity: 0; transform: scale(.86); }
+      to { opacity: 1; transform: scale(1); }
+    }
     .ai-heuristic-popover .ai-heuristic-popover__result {
       background: var(--aih-panel);
       border-radius: 8px;
@@ -1104,7 +1093,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover .ai-heuristic-cues { list-style: none; padding: 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
-    .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-popover .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
     .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
@@ -1170,17 +1159,6 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       letter-spacing: normal;
       text-transform: none;
     }
-    .ai-heuristic-popover[data-level="insufficient"] { --aih-accent: #64748b; }
-    .ai-heuristic-popover[data-level="cue-none"] { --aih-accent: #64748b; }
-    .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-popover[data-level="low"] { --aih-accent: #475569; }
-    .ai-heuristic-popover[data-level="moderate"] { --aih-accent: #2563eb; }
-    .ai-heuristic-popover[data-level="strong"] { --aih-accent: #7c3aed; }
-    .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #0f766e; }
-    .ai-heuristic-popover[data-cue-tone="clear"] { --aih-accent: #15803d; }
-    .ai-heuristic-popover[data-cue-tone="caution"] { --aih-accent: #a16207; }
-    .ai-heuristic-popover[data-cue-tone="alert"] { --aih-accent: #b91c1c; }
     .ai-heuristic-popover__header {
       align-items: flex-start;
       border-bottom: 1px solid var(--aih-border);
@@ -1222,8 +1200,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       outline-offset: 2px;
     }
     .ai-heuristic-popover__body { padding: 14px 16px 16px; }
-    .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
-    .ai-heuristic-popover__notice {
+    .ai-heuristic-popover .ai-heuristic-popover__summary { color: var(--aih-muted); margin: 0 0 12px; }
+    .ai-heuristic-popover .ai-heuristic-popover__notice {
       background: color-mix(in srgb, var(--aih-accent) 7%, var(--aih-panel));
       border-radius: 8px;
       color: var(--aih-text);
@@ -1277,7 +1255,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       font: inherit;
       padding: 5px 7px;
     }
-    .ai-heuristic-popover__footer {
+    .ai-heuristic-popover .ai-heuristic-popover__footer {
       color: var(--aih-muted);
       font-size: 10px;
       margin: 13px 0 0;
@@ -1289,11 +1267,15 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     @media (prefers-color-scheme: dark) {
       button.ai-heuristic-badge[data-ai-heuristic-ui] {
-        --aih-bg: #161b26;
-        --aih-text: #edf1f8;
-        --aih-muted: #aab4c5;
-        --aih-border: rgba(226, 232, 240, .22);
+        --aih-accent: #ffb36b;
+        --aih-stamp-bg: #302217;
       }
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="high"] {
+        --aih-accent: #ff929a;
+        --aih-stamp-bg: #321d22;
+      }
+      .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #ffb36b; }
+      .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #ff929a; }
       .ai-heuristic-popover {
         --aih-bg: #151a24;
         --aih-panel: #202735;
@@ -1302,38 +1284,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-border: #343e50;
         box-shadow: 0 22px 65px rgba(0, 0, 0, .55);
       }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="insufficient"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="uncalibrated"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-none"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="low"],
-      .ai-heuristic-popover[data-level="insufficient"],
-      .ai-heuristic-popover[data-level="uncalibrated"],
-      .ai-heuristic-popover[data-level="cue-none"],
-      .ai-heuristic-popover[data-level="low"] { --aih-accent: #94a3b8; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="moderate"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-one"],
-      .ai-heuristic-popover[data-level="moderate"],
-      .ai-heuristic-popover[data-level="cue-one"] { --aih-accent: #60a5fa; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="strong"],
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="cue-multiple"],
-      .ai-heuristic-popover[data-level="strong"],
-      .ai-heuristic-popover[data-level="cue-multiple"] { --aih-accent: #a78bfa; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-level="mixed"],
-      .ai-heuristic-popover[data-level="mixed"] { --aih-accent: #5eead4; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="neutral"],
-      .ai-heuristic-popover[data-cue-tone="neutral"] { --aih-accent: #94a3b8; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="matched"],
-      .ai-heuristic-popover[data-cue-tone="matched"] { --aih-accent: #60a5fa; }
     }
     @media (prefers-reduced-motion: reduce) {
-      button.ai-heuristic-badge[data-ai-heuristic-ui] { transition: none; }
-      button.ai-heuristic-badge[data-ai-heuristic-ui]:hover { transform: none; }
+      .ai-heuristic-popover[data-entry="stamp"] { animation: none; }
     }
     @media (forced-colors: active) {
-      button.ai-heuristic-badge[data-ai-heuristic-ui], .ai-heuristic-popover { border: 1px solid ButtonText; forced-color-adjust: auto; }
-      .ai-heuristic-badge__dot { background: ButtonText; box-shadow: none; }
-      .ai-heuristic-meter__segment { background: Canvas; border-color: ButtonText; forced-color-adjust: none; }
-      .ai-heuristic-meter__segment[data-filled="true"] { background: ButtonText; border-color: ButtonText; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui], .ai-heuristic-popover { border-color: ButtonText; forced-color-adjust: auto; }
+      button.ai-heuristic-badge[data-ai-heuristic-ui]:hover { background: Highlight; color: HighlightText; }
     }
   `;
 
@@ -1426,24 +1383,26 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    const cues = analysis.cueAssessment;
-    return !cues.assessed || cues.coverage.level === 'short' || !cues.families.length ? 'neutral' : 'matched';
+    return analysis.cueAssessment.families.length >= 3 ? 'high' : 'moderate';
   }
 
   function cueCount(cues) {
     return cues.families.length + '/' + cues.totalFamilies + ' cues';
   }
 
-  function createCueMeter(cues) {
-    const meter = createElement('span', 'ai-heuristic-meter');
-    // The button's accessible name already describes the exact family count.
-    meter.setAttribute('aria-hidden', 'true');
-    for (let index = 0; index < cues.totalFamilies; index += 1) {
-      const segment = createElement('span', 'ai-heuristic-meter__segment');
-      segment.dataset.filled = String(index < cues.families.length);
-      meter.appendChild(segment);
-    }
-    return meter;
+  function cancelPopoverClose() {
+    if (popoverCloseTimer !== null) window.clearTimeout(popoverCloseTimer);
+    popoverCloseTimer = null;
+  }
+
+  function schedulePopoverClose() {
+    cancelPopoverClose();
+    // Allow the pointer to cross the gap into the interactive details panel.
+    popoverCloseTimer = window.setTimeout(() => {
+      popoverCloseTimer = null;
+      if (activePopover && !activePopover.pinned &&
+        !activePopover.node.contains(document.activeElement)) closePopover(false);
+    }, 220);
   }
 
   function createBadge(analysis) {
@@ -1456,25 +1415,30 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    const label = cues.assessed ? 'AI Score' : 'AI Score: not assessed';
-    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', label));
-    if (cues.assessed) {
-      badge.appendChild(createCueMeter(cues));
-    }
-    if (cues.coverage.level === 'short' || !cues.assessed) {
-      badge.appendChild(createElement('span', 'ai-heuristic-badge__coverage', cues.coverage.text));
-    }
-    const accessibleScore = cues.assessed
-      ? 'AI Score: ' + cues.families.length + ' of ' + cues.totalFamilies +
-        ' cue families matched. Authorship probability unavailable'
-      : label;
-    badge.setAttribute('aria-label', accessibleScore + '. ' + cues.coverage.text + '. Open details.');
-    badge.title = 'Open matched style cues. Authorship probability is unavailable; zero cues does not mean human-written.';
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
+    badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
+      cues.families.length + ' of ' + cues.totalFamilies + ' cue families matched. ' +
+      cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
+    badge.addEventListener('pointerenter', (event) => {
+      if (event.pointerType === 'touch') return;
+      cancelPopoverClose();
+      if (activePopover && (activePopover.badge === badge || activePopover.pinned)) return;
+      if (badge.isConnected) openPopover(badge, analysis, false);
+    });
+    badge.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'touch' && activePopover && activePopover.badge === badge) schedulePopoverClose();
+    });
     badge.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (activePopover && activePopover.badge === badge) closePopover(true);
-      else openPopover(badge, analysis);
+      if (activePopover && activePopover.badge === badge) {
+        if (activePopover.pinned) closePopover(true);
+        else {
+          cancelPopoverClose();
+          activePopover.pinned = true;
+          activePopover.node.querySelector('.ai-heuristic-popover__close').focus({ preventScroll: true });
+        }
+      } else openPopover(badge, analysis, true);
     });
     return badge;
   }
@@ -1536,8 +1500,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const checks = [
       ['enabled', 'Enable style cues on this site'],
       ['analyzeComments', 'Analyze comments and replies'],
-      ['hideInsufficient', 'Hide short or unassessed samples'],
-      ['hideLow', 'Hide assessed posts with no cues']
+      ['hideInsufficient', 'Hide signals in short samples']
     ];
     for (const [key, labelText] of checks) {
       const label = createElement('label', '', labelText);
@@ -1604,12 +1567,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     body.appendChild(createSettingsSection());
     popover.appendChild(body);
     document.body.appendChild(popover);
-    activePopover = { node: popover, badge: launcher };
+    activePopover = { node: popover, badge: launcher, pinned: true };
     positionPopover(popover, launcher);
     close.focus({ preventScroll: true });
   }
 
-  function openPopover(badge, analysis) {
+  function openPopover(badge, analysis, pinned) {
     closePopover(false);
     const popover = createElement('div', 'ai-heuristic-popover');
     popover.dataset.aiHeuristicUi = '1';
@@ -1624,7 +1587,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'AI Score');
+    const title = createElement('h2', '', 'AI Detected');
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -1639,17 +1602,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      cues.assessed ? cueCount(cues) + ' · ' + cues.coverage.text : 'Not assessed · ' + cues.coverage.text));
+      (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Each filled bar represents one family, regardless of how often it occurs. ' +
-        'These families are not equally predictive or statistically independent.'));
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Moderate means 1–2 families; high means 3 or more. ' +
+        'Repeated matches within one family count once.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
-      'Authorship probability is unavailable: no validated probability model is enabled for this display. ' +
-      'These cues are not the probability that AI wrote this text. Human writing can match them; AI writing can match none. They do not establish authorship.'));
+      'These are writing-pattern matches, not proof of AI authorship. Human writing can match them; AI writing can match none. ' +
+      'The level counts patterns, not the probability that AI wrote this text.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -1693,9 +1656,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     body.appendChild(createElement('p', 'ai-heuristic-popover__footer', analysis.disclaimer));
     popover.appendChild(body);
     document.body.appendChild(popover);
-    activePopover = { node: popover, badge };
+    activePopover = { node: popover, badge, pinned };
+    popover.addEventListener('pointerenter', cancelPopoverClose);
+    popover.addEventListener('pointerleave', schedulePopoverClose);
+    popover.addEventListener('focusin', cancelPopoverClose);
+    popover.addEventListener('focusout', schedulePopoverClose);
+    popover.addEventListener('click', () => {
+      if (activePopover && activePopover.node === popover) activePopover.pinned = true;
+    });
     positionPopover(popover, badge);
-    close.focus({ preventScroll: true });
+    popover.dataset.entry = 'stamp';
+    if (pinned) close.focus({ preventScroll: true });
   }
 
   function positionPopover(popover, badge) {
@@ -1708,10 +1679,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     else if (rect.left - 8 - width >= margin) left = rect.left - 8 - width;
     else left = clamp(rect.left, margin, window.innerWidth - width - margin);
     let top = rect.bottom + 8;
-    const height = popover.getBoundingClientRect().height;
+    const height = popover.offsetHeight;
     if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
     popover.style.left = `${left}px`;
     popover.style.top = `${top}px`;
+    popover.style.transformOrigin = `${clamp(rect.left + rect.width / 2 - left, 0, width)}px ${clamp(rect.top + rect.height / 2 - top, 0, height)}px`;
   }
 
   function clamp(value, low, high) {
@@ -1719,6 +1691,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function closePopover(restoreFocus) {
+    cancelPopoverClose();
     if (!activePopover) return;
     const { node, badge } = activePopover;
     node.remove();
@@ -1730,8 +1703,36 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function shouldHide(analysis) {
     const cues = analysis.cueAssessment;
-    return (settings.hideInsufficient && (cues.coverage.level === 'short' || !cues.assessed)) ||
-      (settings.hideLow && cues.assessed && !cues.families.length);
+    return !cues.assessed || !cues.families.length || (settings.hideInsufficient && cues.coverage.level === 'short');
+  }
+
+  function sizeStamp(badge, host) {
+    badge.style.removeProperty('--aih-stamp-font-size');
+    const style = window.getComputedStyle(host);
+    const fontSize = parseFloat(style.fontSize) || 16;
+    let lineHeight = parseFloat(style.lineHeight);
+    if (/^[\d.]+$/.test(style.lineHeight)) lineHeight *= fontSize;
+    if (style.lineHeight === 'normal') {
+      // "normal" depends on the host font. Measure its line box instead of
+      // assuming a multiplier that would make the stamp taller than the post.
+      const probe = createElement('span', '', 'M');
+      probe.dataset.aiHeuristicUi = '1';
+      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;display:block;font:inherit;line-height:normal;padding:0;border:0;margin:0;width:max-content;height:auto;';
+      host.appendChild(probe);
+      lineHeight = probe.getBoundingClientRect().height;
+      probe.remove();
+    }
+    if (!lineHeight || !Number.isFinite(lineHeight)) lineHeight = fontSize * 1.5;
+    badge.style.setProperty('--aih-post-font-size', fontSize + 'px');
+    badge.style.setProperty('--aih-post-line-height', lineHeight + 'px');
+    // Narrow nested replies still show the whole stamp on one line. Scale its
+    // lettering only when needed; the outer height continues to match the post.
+    const badgeStyle = window.getComputedStyle(badge);
+    const available = badge.clientWidth - (parseFloat(badgeStyle.paddingLeft) || 0) - (parseFloat(badgeStyle.paddingRight) || 0);
+    const textWidth = badge.firstElementChild.getBoundingClientRect().width;
+    if (available > 0 && textWidth > available) {
+      badge.style.setProperty('--aih-stamp-font-size', (fontSize * .625 * available / textWidth) + 'px');
+    }
   }
 
   function kindFor(element) {
@@ -1749,6 +1750,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     const content = adapter.extractContent(element, kind) || { text: '', excluded: { quotes: 0, code: 0 } };
     const { text, excluded } = content;
+    const textHost = content.textHost || content.host || element;
     if (typeof text !== 'string' || !excluded || !['quotes', 'code'].every((key) =>
       Number.isInteger(excluded[key]) && excluded[key] >= 0)) throw new Error('Invalid adapter content');
     const previous = records.get(element);
@@ -1763,7 +1765,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
-      (!previous.badge || previous.badge.isConnected)) return;
+      (!previous.badge || previous.badge.isConnected)) {
+      if (previous.badge && previous.textHost !== textHost) {
+        previous.textHost = textHost;
+        sizeStamp(previous.badge, textHost);
+      }
+      return;
+    }
     if (previous && previous.badge) {
       if (activePopover && activePopover.badge === previous.badge) closePopover(false);
       previous.badge.remove();
@@ -1779,9 +1787,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       return;
     }
     const badge = createBadge(analysis);
-    try { adapter.placeBadge(element, badge, kind, content); }
+    try {
+      adapter.placeBadge(element, badge, kind, content);
+      sizeStamp(badge, textHost);
+    }
     catch (error) { badge.remove(); throw error; }
-    records.set(element, { fingerprint, text, badge, analysis });
+    records.set(element, { fingerprint, text, badge, analysis, textHost });
   }
 
   function flushQueue() {
@@ -2016,8 +2027,14 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     if (event.key === 'Escape' && activePopover) closePopover(true);
   }
 
-  function onViewportChange() {
+  function onViewportChange(event) {
     closePopover(false);
+    if (event.type === 'resize') {
+      for (const element of tracked) {
+        const record = records.get(element);
+        if (record && record.badge && record.textHost.isConnected) sizeStamp(record.badge, record.textHost);
+      }
+    }
   }
 
   function startAnalysis() {
@@ -2406,7 +2423,7 @@ function createPlatformAdapter() {
       if (candidate.closest('article[role="article"]') !== element) return;
       const quote = candidate.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"], div[role="link"]');
       if (quote && element.contains(quote)) { quotes += 1; return; }
-      if (!best) best = aiHeuristicReadContent(candidate);
+      if (!best) best = { ...aiHeuristicReadContent(candidate), host: candidate };
     });
     best = best || { text: '', excluded: { quotes: 0, code: 0 } };
     best.excluded.quotes += quotes;
@@ -2497,7 +2514,7 @@ function createPlatformAdapter() {
       if (!belongsTo(root, candidate, kind)) return;
       if (candidate.closest('blockquote, pre, code')) return;
       const content = aiHeuristicReadContent(candidate);
-      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = content;
+      if (content.text.length > best.text.length || (!best.text && content.excluded.quotes + content.excluded.code)) best = { ...content, host: candidate };
     });
     return best;
   }
@@ -2509,6 +2526,7 @@ function createPlatformAdapter() {
       if (body.text.toLowerCase().includes(title.text.toLowerCase()) && title.text.length >= 20) return body;
       return {
         text: title.text + '\n' + body.text,
+        host: body.host,
         excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
       };
     }
@@ -2818,7 +2836,7 @@ function createPlatformAdapter() {
         content.excluded.quotes += [...element.querySelectorAll(postSelector)]
           .filter(quote => quote.parentElement?.closest(postSelector) === element).length;
       }
-      return { ...content, host: owned.host };
+      return { ...content, host: owned.host, textHost: owned.body };
     },
     placeBadge(element, badge, kind, content) {
       if (!content.host || !element.contains(content.host)) throw new Error('Missing YouTube text host');
@@ -2829,5 +2847,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"},{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.8.0",distribution:"combined"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"},{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.9.0",distribution:"combined"});
 })();

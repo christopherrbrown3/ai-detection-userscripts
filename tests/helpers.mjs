@@ -24,6 +24,26 @@ export function loadFixture(name) {
   return fs.readFileSync(path.join(ROOT, 'tests/fixtures', name), 'utf8');
 }
 
+// Lifecycle/placement tests need a real positive cue. Keep the original fixtures
+// unchanged for exact extraction and historical diagnostic-parity assertions.
+export function loadSignaledFixture(name) {
+  const dom = new JSDOM(loadFixture(name));
+  const selectors = {
+    'x.html': '[data-testid="tweetText"]',
+    'linkedin.html': '.update-components-update-v2__commentary, .comments-comment-item__main-content',
+    'linkedin-wrapped-feed.html': '[data-testid="expandable-text-box"]',
+    'reddit.html': '[slot="text"], [slot="comment"]',
+    'facebook.html': '#post-text [data-ad-rendering-role], #comment-text, #reply-one > div[dir="auto"], #dialog-post, #dialog-comment > div[dir="auto"]',
+    'youtube.html': '#description-body, #reply-one #content-text, #legacy-comment #content-text'
+  };
+  for (const body of dom.window.document.querySelectorAll(selectors[name])) {
+    body.prepend('Here are the key takeaways. In conclusion, ');
+  }
+  const html = dom.serialize();
+  dom.window.close();
+  return html;
+}
+
 export function loadDom(platform, html, url, options = {}) {
   const dom = new JSDOM(html, {
     url,

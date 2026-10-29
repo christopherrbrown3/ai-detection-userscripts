@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test, { afterEach, describe } from 'node:test';
-import { loadDom, loadGeneratedDom, loadFixture, closeDoms } from './helpers.mjs';
+import { loadDom, loadGeneratedDom, loadFixture, loadSignaledFixture, closeDoms } from './helpers.mjs';
 
 afterEach(closeDoms);
-const fixture=loadFixture('facebook.html');
+const fixture=loadSignaledFixture('facebook.html');
 const pageKey='ai-heuristic:facebook:settings:v2';
 const managerKey=pageKey+'@https://www.facebook.com';
 async function until(predicate) {
@@ -63,7 +63,7 @@ for(const distribution of ['source','combined','targeted']) describe(distributio
     await until(()=>window.document.querySelector('.ai-heuristic-badge'));
     toggle(window,'Analyze comments and replies');
     await until(()=>writes.length===1);
-    toggle(window,'Hide short or unassessed samples');
+    toggle(window,'Hide signals in short samples');
     assert.equal(writes.length,1);
     releases[0]();
     await until(()=>writes.length===2);
