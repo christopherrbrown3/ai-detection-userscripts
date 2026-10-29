@@ -5,7 +5,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'browser-cues-v4';
+  const ANALYSIS_VERSION = 'browser-cues-v5';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -307,8 +307,15 @@ function createDetectorEngine(options) {
 
     if (assessed) {
       const references = modelReferenceSpans(parsed);
-      if (references.length) {
-        add('self-disclosure', 'Explicit model reference', 'Model-reference wording outside quotations or code.', references);
+      // Recognizable serialization remnants, not ordinary Markdown, Unicode,
+      // or a model name. Quoted/code examples are masked by the shared parser.
+      const artifacts = Array.from(raw.matchAll(/<\|im_start\|>assistant\b|<\|start_header_id\|>assistant<\|end_header_id\|>|<\|start\|>assistant<\|message\|>|\uE200cite\uE202turn\d+(?:search|view|news|file)\d+[^\uE201\n]{0,180}\uE201/g),
+        (match) => ({ start: match.index, end: match.index + match[0].length }));
+      if (references.length || artifacts.length) {
+        add('self-disclosure', artifacts.length ? 'Model reference or assistant artifact' : 'Explicit model reference',
+          artifacts.length ? 'Recognizable assistant-role or citation markup outside quotations or code. It may also be reproduced by a person.' :
+            'Model-reference wording outside quotations or code.',
+          [...references, ...artifacts].sort((a, b) => a.start - b.start));
       }
 
       const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES]);
@@ -316,10 +323,18 @@ function createDetectorEngine(options) {
       // One everyday phrase or promotional adjective is too little to flag.
       const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
       const distinctBuzz = new Set(buzz.map((span) => raw.slice(span.start, span.end).toLowerCase()));
-      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2)) {
+      // Repeated contrast templates are another framing cue, never another vote
+      // for the same family. A lone "not X, but Y" remains unremarkable.
+      const contrasts = Array.from(normalizeApostrophes(raw).matchAll(/\bnot(?:\s+just)?\b[^.!?\n]{6,100}[,;—–]\s*but\b[^.!?\n]{6,100}|\b(?:it|this|that)(?:\s+is(?:\s+not|n't)|'s\s+not)\b[^.!?\n]{6,100}[.!?]\s+(?:it(?:'s| is)|this is|that is)\b[^.!?\n]{6,100}/gi),
+        (match) => ({ start: match.index, end: match.index + match[0].length }))
+        .filter((span) => !parsed.excluded.some((excluded) => span.start < excluded.end && span.end > excluded.start) &&
+          !parsed.sentences.some((sentence) => sentence.isList && span.start < sentence.end && span.end > sentence.start));
+      const repeatedContrast = proseWordCount >= 40 && contrasts.length >= 2;
+      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2) || repeatedContrast) {
         add('formulaic-framing', 'Stock framing phrases',
-          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.',
-          [...framing, ...buzz].sort((a, b) => a.start - b.start));
+          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.' +
+            (repeatedContrast ? ' ' + contrasts.length + ' repeated contrast constructions.' : ''),
+          [...framing, ...buzz, ...(repeatedContrast ? contrasts : [])].sort((a, b) => a.start - b.start));
       }
 
       const openingGroups = new Map();

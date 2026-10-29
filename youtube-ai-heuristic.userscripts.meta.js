@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.8.0
+// @version      0.9.0
 // @description  Adds opt-in, local writing-style cues to YouTube descriptions, comments, replies, and channel Posts.
 // @author       christopherrbrown3
 // @license      MIT

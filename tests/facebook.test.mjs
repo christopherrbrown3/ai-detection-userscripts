@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test, { afterEach, describe } from 'node:test';
-import { loadDom, loadGeneratedDom, loadFixture, closeDoms, bundleSource, evaluateBundle } from './helpers.mjs';
+import { loadDom, loadGeneratedDom, loadFixture, loadSignaledFixture, closeDoms, bundleSource, evaluateBundle } from './helpers.mjs';
 
 afterEach(closeDoms);
-const fixture = loadFixture('facebook.html');
+const fixture = loadSignaledFixture('facebook.html');
 const key = 'ai-heuristic:facebook:settings:v2';
-const sample = 'I fixed the door after work yesterday. The new handle turns smoothly and the latch stays shut when the wind blows.';
+const sample = 'Here are the key takeaways. In conclusion, I fixed the door after work yesterday. The new handle turns smoothly and the latch stays shut when the wind blows.';
 const article = (id = 'post', text = sample) => `<div role="article" id="${id}"><h3>Example</h3><div data-ad-preview="message">${text}</div></div>`;
 const reply = (id, text = sample) => `<div role="article" aria-label="Comment by Example" id="${id}"><a href="/reader"><span dir="auto">Example Reader</span></a><div dir="auto">${text}</div><a href="/example/posts/123?comment_id=${id}">1h</a></div>`;
 const wrap = html => '<!doctype html><main>' + html + '</main>';
@@ -33,7 +33,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
   }
 
   test('extracts only author-owned posts, comments, replies, and dialog text', () => {
-    const window = load(), document = window.document;
+    const window = load(loadFixture('facebook.html')), document = window.document;
     const expected = {
       'post-one': 'I repaired the garden gate after work yesterday.\n\nThe new latch closes with a gentle push, and the dog cannot open it anymore.',
       'comment-one': 'We used the same latch on our shed last month. It still works well after the heavy rain.',
@@ -42,7 +42,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
       'dialog-post': 'We tested the replacement door before the shop opened.\n\nThe second inspection found no loose screws or damaged hinges.',
       'dialog-comment': 'I tried that repair last week. The handle now moves smoothly and the door stays closed.'
     };
-    assert.equal(document.querySelectorAll('.ai-heuristic-badge').length, 6);
+    assert.equal(document.querySelectorAll('.ai-heuristic-badge').length, 1);
     for (const [id, text] of Object.entries(expected)) {
       const analysis = window.__controller.getAnalysis(document.getElementById(id));
       assert.equal(analysis.sourceText, text, id);
@@ -97,7 +97,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     const window = load(html), post = window.document.getElementById('outer');
     assert.equal(window.__controller.getAnalysis(post).sourceText, 'I checked the repair today. The new handle works well after the rain.');
     assert.equal(window.__controller.getAnalysis(post).excluded.quotes, 1);
-    assert.equal(window.document.querySelectorAll('.ai-heuristic-badge').length, 1);
+    assert.equal(window.document.querySelectorAll('.ai-heuristic-badge').length, 0);
     assert.match(window.document.getElementById('embedded').textContent, /quoted original/);
   });
 
@@ -112,7 +112,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     post.lastElementChild.remove();
     await until(() => post.querySelector('.ai-heuristic-badge'));
     post.innerHTML = '<h3>Different Author</h3><div data-ad-comet-preview="message">Here are the key takeaways from the rollout. In conclusion, we should check the release before shipping it to the team.</div>';
-    await until(() => window.__controller.getAnalysis(post)?.sourceText.startsWith('Here are'));
+    await until(() => window.__controller.getAnalysis(post)?.sourceText.includes('from the rollout'));
     assert.equal(post.querySelectorAll('.ai-heuristic-badge').length, 1);
     post.querySelector('.ai-heuristic-badge').click();
     post.remove();
@@ -125,14 +125,14 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     await until(() => window.__controller.getAnalysis(dialog.firstElementChild) === undefined);
   });
 
-  test('short and unsupported text retain honest score states and missing-model diagnostics', async () => {
-    const window = load(wrap(article('short','I agree with your point.') + article('unknown','これは日本語で書かれた文章です。別の文章もあります。')));
+  test('short matches remain labeled in details and unsupported text stays unbadged', async () => {
+    const window = load(wrap(article('short','As an AI, I can help with your question.') + article('unknown','これは日本語で書かれた文章です。別の文章もあります。')));
     const short = window.document.querySelector('#short .ai-heuristic-badge');
-    assert.match(short.textContent, /^AI ScoreShort sample$/);
-    assert.equal(short.querySelectorAll('.ai-heuristic-meter__segment').length, 6);
+    assert.equal(short.textContent, 'AI Detected');
+    assert.match(short.getAttribute('aria-label'), /Short sample/);
+    assert.equal(short.querySelector('.ai-heuristic-meter'), null);
     const unknown = window.document.querySelector('#unknown .ai-heuristic-badge');
-    assert.match(unknown.textContent, /not assessed.*Unsupported language/);
-    assert.equal(unknown.querySelector('.ai-heuristic-meter'), null);
+    assert.equal(unknown, null);
     short.click();
     const details=window.document.querySelector('details'); details.open=true;
     await until(() => window.document.querySelector('.ai-heuristic-popover__technical').textContent);

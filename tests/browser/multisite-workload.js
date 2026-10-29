@@ -1,7 +1,7 @@
 async (page) => {
   const sources = __VALIDATION_SOURCES__;
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
-  const sample = 'I tested the gate after work yesterday. The hinge needs oil but the latch still closes with a gentle push.';
+  const sample = 'Here are the key takeaways. In conclusion, I tested the gate after work yesterday. The hinge needs oil but the latch still closes with a gentle push.';
   const card = (i) => '<article role="article" id="post-' + i + '"><div data-testid="User-Name">Example</div><div data-testid="tweetText">' + sample + ' Revision ' + (i % 4) + '.</div></article>';
   const html = '<!doctype html><html lang="en"><head><style>body{margin:0}article{box-sizing:border-box;min-height:120px;padding:8px}</style></head><body>' + Array.from({length:120},(_,i)=>card(i)).join('') + '</body></html>';
   await page.unrouteAll({behavior:'wait'});

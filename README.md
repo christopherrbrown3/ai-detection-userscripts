@@ -41,23 +41,24 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-The badge shows **AI Score** and a six-bar meter. Each filled bar is one matched pattern family, regardless of how often it occurs. For example, two families give two filled bars. The exact count remains in the details panel and screen-reader label. **Authorship probability is unavailable**: these families are not equally predictive or statistically independent, and the project has no validated probability model for this display. Open the badge for descriptions and highlighted examples. The original post is never marked up or changed.
+Posts with matched patterns get a small **AI Detected** stamp. Its height matches the post's text line height. Posts with no matches, or text the English rules cannot assess, have **no badge**.
 
-- **Six empty bars** means the rules ran and found no configured patterns. It does not establish human authorship. Generated text can also match none.
-- **Short sample** appears directly on the badge for fewer than 20 words or 2 sentences/list items. Matches in these samples may be incidental.
-- **Not assessed** appears with **Language uncertain** or **Unsupported language** when there is too little evidence to apply the English rules. This is different from zero matches.
+- **Orange / moderate:** 1–2 of the six pattern families match.
+- **Red / high:** 3–6 families match. A double border also distinguishes high signal levels without relying only on color.
+- **Hover:** details grow out from the stamp, showing the matched families and highlighted passages. Moving into the panel keeps it open.
+- **Click, tap, Enter, or Space:** keep details open for reading and interaction. Escape closes them and returns focus. Reduced-motion settings disable the grow animation.
 
-Short, unassessed, and zero-match badges use neutral colors. Other matches use one accent color without a traffic-light severity scale. Unassessed text has no numeric count or meter, so it cannot be mistaken for a zero. Screen readers announce the exact count, unavailable probability, and sample status. The panel also reports word and sentence counts and classifies longer samples as standard or long (at least 80 words and 4 sentences/list items).
+The level counts matched pattern families, not the probability that AI wrote the post. These families are not equally predictive or statistically independent. Human writing can match them; AI writing can match none. The details explain this and show the exact count, sample length, and exclusions. **Short sample** is reported in details and the accessible name for fewer than 20 words or 2 sentences/list items. The original post is never highlighted or rewritten.
 
-The six families are explicit model references, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Descriptions report observable patterns, not rhetorical intent or authorship. Lists are excluded from the three prose-based rhythm/repetition checks; counted openings are excluded from phrase repetition. These safeguards reduce overlapping matches without claiming that the families are statistically independent.
+The six families are model references or recognizable assistant artifacts, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Multiple matches in a family count once. Lists are excluded from the three prose rhythm/repetition checks and from the new contrast-construction check; counted openings are excluded from phrase repetition.
 
-The **Style cue settings** button remains available even on empty pages or when every badge is hidden. Settings are stored locally for the current site/origin:
+The **Style cue settings** button remains available when every badge is hidden. Settings are stored locally for the current site/origin:
 
 - enable or disable analysis on this site
-
 - comments/replies on or off
-- hiding short or unassessed samples
-- hiding assessed posts with no cues
+- hide signals in short samples
+
+Zero-match and unassessed posts always stay unbadged. Older saved settings remain readable; the old zero-match visibility preference no longer changes this behavior. See the [0.9 stamp validation report](docs/stamp-validation.md) for verification and limits.
 
 ## Privacy
 
@@ -75,8 +76,8 @@ The browser preserves paragraph, line-break, and list boundaries while extractin
 
 The default rules look for exact, inspectable patterns:
 
-- explicit model-reference wording, excluding ordinary refusals and AI job titles
-- combinations of stock framing phrases, including common contemporary variants, instead of a single everyday phrase
+- explicit model-reference wording, excluding ordinary refusals and AI job titles; specific assistant-role delimiters and leaked citation markup
+- combinations of stock framing phrases, including common contemporary variants; repeated contrast constructions require at least two matches and 40 prose words
 - repeated multiword sentence openings, including longer repeated openings that begin with function words
 - bullet, arrow, checkmark, and numbered lists or punctuation clusters, with punctuation density adjusted for text length
 - similar prose sentence lengths with minimum sample requirements
@@ -90,7 +91,9 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 
 ## Accuracy policy
 
-The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows every contributing cue; otherwise it explicitly reports that the text was not assessed. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows contributing cues when any match. Unsupported or uncertain language is skipped, and zero-match posts have no badge. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+
+Version 0.9 adds two rule-only checks from the [browser detection research](docs/research/2026-10-28-browser-ai-text-detection.md): recognizable assistant artifacts and repeated contrast constructions. No model training, inference runtime, new runtime dependency, or network service is needed. Diagnostic feature definitions and model weights are unchanged. The [stamp validation report](docs/stamp-validation.md) records the chosen rules and their limits.
 
 Version 0.8 recognizes more combinations of framing, repeated openings, and list markers, and avoids treating examples such as “AI engineer” as a model self-reference. These rules will match more human writing too; a broader match is not evidence that detection accuracy has improved. See the [sensitivity validation](docs/sensitivity-validation.md) for the before-and-after probes and their limits.
 

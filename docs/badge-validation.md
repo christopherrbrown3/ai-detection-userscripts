@@ -1,5 +1,7 @@
 # Cue count and badge validation — 0.6.1
 
+Historical results below describe the earlier interface. The current harness now tests 0.9 stamps against 0.8; see [stamp validation](stamp-validation.md).
+
 ## 0.6.2 compact badge follow-up
 
 On 2026-09-28, assessed badge labels were reduced to **AI Score** alongside the six bars, at the user's request. Exact counts remain in the details panel and accessible name. Short-sample and unassessed labels are preserved. Detection and extraction are unchanged.

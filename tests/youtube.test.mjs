@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test, { afterEach, describe } from 'node:test';
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { loadDom, loadGeneratedDom, loadFixture, closeDoms, bundleSource, evaluateBundle } from './helpers.mjs';
+import { loadDom, loadGeneratedDom, loadFixture, loadSignaledFixture, closeDoms, bundleSource, evaluateBundle } from './helpers.mjs';
 
 afterEach(closeDoms);
-const fixture = loadFixture('youtube.html');
+const fixture = loadSignaledFixture('youtube.html');
 const key = 'ai-heuristic:youtube:settings:v2';
 const watchPath = '/watch?v=video000001';
-const sample = 'I fixed the door after work yesterday. The new handle turns smoothly and the latch stays shut when the wind blows.';
+const sample = 'Here are the key takeaways. In conclusion, I fixed the door after work yesterday. The new handle turns smoothly and the latch stays shut when the wind blows.';
 const comment = (id, text = sample) => `<ytd-comment-view-model id="${id}"><ytd-expander><yt-attributed-string id="content-text">${text}</yt-attributed-string></ytd-expander><button>Reply</button></ytd-comment-view-model>`;
 const post = (id, text = sample, extra = '') => `<ytd-backstage-post-renderer id="${id}"><h3>Example Creator</h3><yt-formatted-string id="content-text">${text}</yt-formatted-string>${extra}</ytd-backstage-post-renderer>`;
 const posts = html => '<!doctype html><ytd-app><ytd-browse>' + html + '</ytd-browse></ytd-app>';
@@ -36,21 +36,21 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
   }
 
   test('description and each comment own exact text with no player, credits, title, or sibling contamination', () => {
-    const window = load(), document = window.document;
+    const window = load(loadFixture('youtube.html')), document = window.document;
     const expected = {
       'description-owner': 'I repaired the garden gate after work yesterday.\n\nThe new latch closes with a gentle push, and the dog cannot open it anymore.',
       'comment-one': 'Here are the key takeaways from this repair. In conclusion, we should check the latch before replacing the entire gate.',
       'reply-one': 'We used the same latch on our shed last month. It still works well after the heavy rain.',
       'legacy-comment': 'I checked the hinge this morning. The screws had loosened, so I tightened them before leaving.'
     };
-    assert.equal(document.querySelectorAll('.ai-heuristic-badge').length,4);
+    assert.equal(document.querySelectorAll('.ai-heuristic-badge').length,1);
     for (const [id,text] of Object.entries(expected)) {
       const element = document.getElementById(id), analysis = window.__controller.getAnalysis(element);
       assert.equal(analysis.sourceText,text,id);
       assert.equal(analysis.kind,id==='description-owner'?'post':'comment');
       assert.equal(analysis.platform,'youtube');
       assert.equal(analysis.modelAvailable,false);
-      assert.ok(element.querySelector('.ai-heuristic-badge'));
+      assert.equal(Boolean(element.querySelector('.ai-heuristic-badge')), id === 'comment-one');
     }
     assert.deepEqual(plain(window.__controller.getAnalysis(document.getElementById('description-owner')).excluded),{quotes:1,code:1});
     const cue = window.__controller.getAnalysis(document.getElementById('comment-one')).cueAssessment.families[0];
@@ -161,18 +161,18 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     assert.equal(window.document.querySelector('.ai-heuristic-badge'),null);
   });
 
-  test('sample states, compact bars, cue counts in details, and missing diagnostic model remain honest', async () => {
-    const window=load(posts(post('short','I agree with your point.')+post('unknown','これは日本語で書かれた文章です。別の文章もあります。')),'/post/UgSynthetic');
+  test('short matches expose sample limits and unsupported text stays unbadged', async () => {
+    const window=load(posts(post('short','As an AI, I can help with your question.')+post('unknown','これは日本語で書かれた文章です。別の文章もあります。')),'/post/UgSynthetic');
     const badge=window.document.querySelector('#short .ai-heuristic-badge');
-    assert.equal(badge.textContent,'AI ScoreShort sample');
-    assert.equal(badge.querySelectorAll('.ai-heuristic-meter__segment').length,6);
-    assert.match(badge.getAttribute('aria-label'),/0 of 6 cue families/);
+    assert.equal(badge.textContent,'AI Detected');
+    assert.match(badge.getAttribute('aria-label'), /Short sample/);
+    assert.equal(badge.querySelector('.ai-heuristic-meter'),null);
+    assert.match(badge.getAttribute('aria-label'),/1 of 6 cue families/);
     const unknown=window.document.querySelector('#unknown .ai-heuristic-badge');
-    assert.match(unknown.textContent,/not assessed.*Unsupported language/);
-    assert.equal(unknown.querySelector('.ai-heuristic-meter'),null);
+    assert.equal(unknown,null);
     badge.click();const details=window.document.querySelector('details');details.open=true;
     await until(()=>details.textContent.includes('Diagnostic model: unavailable for this platform'));
-    assert.match(window.document.querySelector('.ai-heuristic-popover').textContent,/0\/6 cues/);
+    assert.match(window.document.querySelector('.ai-heuristic-popover').textContent,/1\/6 cues/);
   });
 });
 

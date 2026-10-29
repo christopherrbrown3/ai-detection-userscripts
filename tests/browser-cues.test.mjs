@@ -189,14 +189,11 @@ test('literal line breaks in pre-wrap text survive extraction', (t) => {
   assert.equal(result.metrics.sentenceCount, 3);
 });
 
-test('badges expose short and uncertain samples neutrally', (t) => {
+test('zero-match and uncertain samples stay unbadged', (t) => {
   const window = browser(t, tweet('short', 'I agree with your point. That is helpful!') + tweet('unknown', 'No puedo asistir a la reunión de mañana.'));
-  const short = window.document.querySelector('#short .ai-heuristic-badge');
-  const unknown = window.document.querySelector('#unknown .ai-heuristic-badge');
-  assert.match(short.textContent, /Short sample/);
-  assert.equal(short.dataset.cueTone, 'neutral');
-  assert.match(unknown.textContent, /not assessed.*Language uncertain/);
-  assert.equal(unknown.dataset.cueTone, 'neutral');
+  assert.equal(window.document.querySelector('.ai-heuristic-badge'), null);
+  assert.equal(window.__controller.getAnalysis(window.document.getElementById('short')).cueAssessment.families.length, 0);
+  assert.equal(window.__controller.getAnalysis(window.document.getElementById('unknown')).cueAssessment.assessed, false);
 });
 
 test('examples highlight exact text and diagnostics are deferred until expanded', async (t) => {
@@ -234,7 +231,7 @@ test('mutations only re-extract affected posts and ignore unrelated UI', async (
   assert.deepEqual(reads, ['two']);
   reads.length = 0;
   window.document.getElementById('clock').textContent = 'Updated elsewhere';
-  window.document.querySelector('#one .ai-heuristic-badge').click();
+  window.document.querySelector('#two .ai-heuristic-badge').click();
   await wait();
   assert.deepEqual(reads, []);
 });
@@ -245,7 +242,7 @@ test('duplicate text uses the bounded analysis cache', async (t) => {
   const analyze = window.__controller.engine.analyze;
   window.__controller.engine.analyze = (...args) => { analyses += 1; return analyze(...args); };
   window.document.body.insertAdjacentHTML('beforeend', tweet('two', ordinary));
-  await until(() => window.document.querySelector('#two .ai-heuristic-badge'));
+  await until(() => window.__controller.getAnalysis(window.document.getElementById('two')));
   assert.equal(analyses, 0);
 });
 
@@ -280,7 +277,7 @@ test('offscreen posts wait for intersection and edits are fresh on entry', async
 });
 
 test('empty posts remove stale badges and stopping cancels queued work', async (t) => {
-  const window = browser(t, tweet('p', ordinary));
+  const window = browser(t, tweet('p', framed));
   window.document.querySelector('[data-testid="tweetText"]').textContent = '';
   await until(() => !window.document.querySelector('.ai-heuristic-badge'));
   window.document.querySelector('[data-testid="tweetText"]').textContent = framed;
@@ -290,7 +287,7 @@ test('empty posts remove stale badges and stopping cancels queued work', async (
 });
 
 test('a badge removed by the site is restored from cached analysis', async (t) => {
-  const window = browser(t, tweet('p', ordinary));
+  const window = browser(t, tweet('p', framed));
   window.document.querySelector('.ai-heuristic-badge').remove();
   await until(() => window.document.querySelector('.ai-heuristic-badge'));
   assert.equal(window.document.querySelectorAll('.ai-heuristic-badge').length, 1);
