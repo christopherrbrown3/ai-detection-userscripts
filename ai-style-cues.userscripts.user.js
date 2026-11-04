@@ -4,7 +4,7 @@
 // ==UserScript==
 // @name         AI-Style Cues (Local)
 // @namespace    https://github.com/christopherrbrown3/ai-detection-userscripts
-// @version      0.9.1
+// @version      0.10.0
 // @description  Shows local, explainable writing-style cues on supported social sites.
 // @author       christopherrbrown3
 // @license      MIT
@@ -44,7 +44,7 @@ function createDetectorEngine(options) {
   const platform = config.platform || 'unknown';
   const modelBundle = config.modelBundle || { metadata: {}, models: {} };
   const CHAR_HASH_DIM = 128;
-  const ANALYSIS_VERSION = 'browser-cues-v5';
+  const ANALYSIS_VERSION = 'browser-cues-v6';
 
   const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'because', 'so', 'of', 'to', 'in', 'on',
@@ -54,6 +54,15 @@ function createDetectorEngine(options) {
     'could', 'would', 'should', 'may', 'might', 'must', 'will', 'just', 'have', 'has', 'had'
   ]);
 
+  // Language-gate evidence only; STOPWORDS also feeds diagnostic features.
+  // Contractions keep punchy, contraction-heavy English from reading as
+  // "uncertain" (it's, don't and isn't were not English evidence before 0.10).
+  const ENGLISH_EVIDENCE = new Set([...STOPWORDS,
+    "it's", "don't", "isn't", "i'm", "you're", "that's", "can't", "won't", "didn't", "doesn't", "aren't", "wasn't",
+    "we're", "they're", "there's", "what's", "let's", "i've", "i'll", "i'd", "you'll", "you've", "we've", "it'll",
+    'about', 'what', 'there', 'all', 'very', 'really', 'more', 'most', 'some', 'any', 'how', 'why', 'when', 'where',
+    'who', 'which', 'than', 'only', 'also', 'into', 'out', 'up', 'over', 'every'
+  ]);
   const FIRST_PERSON = new Set(['i', 'me', 'my', 'mine', 'we', 'us', 'our', 'ours']);
   const SECOND_PERSON = new Set(['you', 'your', 'yours', 'yourself', 'yourselves']);
 
@@ -94,7 +103,68 @@ function createDetectorEngine(options) {
     'redefining the way', 'the possibilities are endless'
   ];
 
-  const LIST_MARKER = /^(?:[ \t]*)(?:[-*•→➜➔►▸✓✔☑✅]\uFE0F?|\d+[.)])[ \t]+/;
+  // Cue-only phrase tiers. PHRASES above feeds the diagnostic model and must
+  // stay in sync with training/features.py; these lists never change features.
+  // Weak phrases were about as common in pre-2022 human answers as in ChatGPT
+  // output (HC3 ELI5, docs/accuracy-validation.md), so they count only in threes.
+  const WEAK_FRAMING = [
+    'here are', 'that said', 'in other words', 'as a result', 'in addition',
+    'on the other hand', 'what i learned', 'furthermore', 'moreover',
+    'at the end of the day', 'what this means', 'as such', 'to be clear', 'in this thread',
+    'the question is', 'the reality is', 'step by step', 'lessons learned', 'in the meantime',
+    "here's how", 'here is how', "it's not about", 'with that in mind', 'to sum up', 'overall',
+    'additionally', "here's the thing", "here's what", 'here is what', 'the lesson', 'in this post',
+    'make no mistake'
+  ];
+  // Assistant-register framing that was rare in the same human control set.
+  const EXTRA_FRAMING = [
+    'overall,', "it's important to", 'it is important to', "it's also important", 'it is also important',
+    "it's worth noting", "it's crucial to", 'it is crucial to', 'in summary', 'in conclusion',
+    'there are many factors', 'there are several factors', 'a number of factors', 'a wide range of',
+    'a wide variety of', 'a wide array of', "it's always a good idea", 'it is always a good idea',
+    'it is not uncommon', 'it can be helpful', 'there is no one-size-fits-all', 'i hope this helps',
+    'let me know if you have any questions', 'let me know if you have any other questions',
+    'based on available information', 'based on the available information', 'while specific details are limited',
+    'in the realm of', 'navigating the complexities', 'in an ever-evolving'
+  ];
+  // Inflection-aware promotional terms (regex sources); "leverage" also
+  // matches "leveraging". One distinct term counts once.
+  const BUZZ_TERMS = [
+    'synerg(?:y|ies|istic)', 'leverag(?:e|es|ed|ing)', 'unlock(?:s|ed|ing)?', 'paradigms?', 'disrupt(?:s|ed|ing|ive|ion)?',
+    'innovative', 'thought leadership', 'game(?:-| )changers?', 'empower(?:s|ed|ing|ment)?', 'elevat(?:e|es|ed|ing)',
+    'journeys?', 'mission', 'vision', 'stakeholders?', 'scalable', 'robust', 'strategic', 'amazing', 'incredible',
+    'excited to announce', 'thrilled to', 'grateful for', 'honou?red to', 'humbled?', 'delighted to share', 'proud to'
+  ];
+  // Style words over-represented in LLM output: Wikipedia "Signs of AI writing",
+  // Kobak et al. 2025 (excess vocabulary) and Reinhart et al. 2025 (PNAS).
+  // Each appeared in at most 0.17% of pre-2022 human HC3 answers.
+  const AI_VOCABULARY = [
+    'delv(?:e|es|ed|ing)', 'tapestr(?:y|ies)', 'testament', 'pivotal', 'underscor(?:es|ed|ing)', 'showcas(?:e|es|ed|ing)',
+    'intricate(?:ly)?', 'intricac(?:y|ies)', 'vibrant', 'enduring', 'foster(?:s|ed|ing)?', 'garner(?:s|ed|ing)?',
+    'meticulous(?:ly)?', 'interplay', 'boasts', 'bolster(?:s|ed|ing)?', 'multifaceted', 'realms?', 'commendable',
+    'noteworthy', 'notably', 'embark(?:s|ed|ing)?', 'resonat(?:e|es|ed|ing)', 'transformative', 'unwavering',
+    'holistic', 'invaluable', 'seamless(?:ly)?', 'camaraderie', 'palpable', 'insightful', 'groundbreaking',
+    'cutting-edge', 'elucidat(?:e|es|ed|ing)', 'underpin(?:s|ned|ning)?', 'encompass(?:es|ed|ing)?', 'ever-evolving',
+    'unparalleled', 'esteemed', 'adept', 'exemplif(?:y|ies|ied)', 'myriad', 'plethora', 'bustling', 'beacon',
+    'symphony', 'labyrinth', 'kaleidoscope', 'treasure trove', 'pinnacle', 'quintessential', 'indelible',
+    'nestled', 'enigmatic', 'paramount', 'nuanced', 'thriving', 'navigat(?:e|es|ed|ing)', 'landscapes?',
+    'comprehensive', 'crucial(?:ly)?', 'harness(?:es|ed|ing)?', 'streamlin(?:e|es|ed|ing)', 'embrac(?:e|es|ed|ing)'
+  ];
+  // Copula avoidance and trailing participle clauses (Wikipedia "Signs of AI
+  // writing"); a regex stand-in for the present participial clauses that
+  // Reinhart et al. found at 2-5x the human rate in instruction-tuned output.
+  const LLM_PHRASING = [
+    '(?:serves|served|serving|stands|stood) as (?:a|an|the)', '(?:is|are|was|remains|stands as) a testament to',
+    '(?:plays?|played|playing) (?:a|an) (?:crucial|pivotal|vital|key|significant|essential|integral|important) role',
+    ', (?:highlighting|underscoring|emphasizing|showcasing|reflecting|symbolizing|ensuring|fostering|enhancing|solidifying|cementing|reinforcing|paving the way)',
+    '(?:a|an) (?:rich|vibrant|intricate|complex|diverse) tapestry', 'setting the stage for',
+    '(?:evolving|ever-changing|ever-evolving|rapidly changing) landscape', 'deeply rooted',
+    '(?:a|the) (?:crucial|pivotal|key) (?:moment|turning point)', 'left an indelible mark'
+  ];
+
+  // Line-start bullets, numbers, keycaps and emoji. The emoji ranges are
+  // explicit so training/features.py can mirror them without \p classes.
+  const LIST_MARKER = /^(?:[ \t]*)(?:[-*•→➜➔►▸✓✔☑✅]\uFE0F?|\d+[.)]|\d\uFE0F?\u20E3|[\u{1F300}-\u{1FAFF}\u2600-\u27BF\u2B00-\u2BFF]\uFE0F?)[ \t]+/u;
   const MODEL_REFERENCE = /(?:^|[^\p{L}\p{N}])((?:as an ai(?: language model| assistant)?|as a language model|as an artificial intelligence|i am an ai(?: language model| assistant)?|i'm an ai(?: language model| assistant)?|i am a language model))(?=$|[ \t]*(?:[,;:!?.]|\b(?:i|and|but|can|cannot|do|don't|will|am|was|that|designed|trained)\b))/giu;
 
   const FEATURE_NAMES = {
@@ -190,6 +260,10 @@ function createDetectorEngine(options) {
     const sentences = [];
     const boundaryRe = /[.!?]+(?:[)\]]+)?(?=\s|$)|\n+/g;
     const abbreviations = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'vs', 'etc', 'e.g', 'i.e', 'u.s', 'u.k']);
+    // These end a sentence only before an uppercase word: "at 9 a.m. and", "Acme Inc. on", "No. 5".
+    const conditional = new Set(['a.m', 'p.m', 'inc', 'ltd', 'co', 'corp', 'approx', 'min', 'max', 'no', 'fig', 'vol',
+      'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec', 'est', 'dept', 'govt', 'ft',
+      'lb', 'lbs', 'oz', 'hr', 'hrs', 'sec', 'ave', 'blvd', 'rd', 'pp', 'ca', 'al', 'cf']);
     let start = 0;
     function append(end) {
       const piece = masked.slice(start, end);
@@ -213,6 +287,7 @@ function createDetectorEngine(options) {
         const prefix = masked.slice(start, match.index);
         const word = (prefix.match(/([A-Za-z.]+)$/) || [])[1] || '';
         if (abbreviations.has(word.toLowerCase()) || /^[A-Z]$/.test(word) || /^\s*\d+$/.test(prefix)) continue;
+        if (conditional.has(word.toLowerCase()) && /^[ \t]*[a-z0-9]/.test(masked.slice(match.index + 1))) continue;
       }
       append(match.index + match[0].length);
     }
@@ -331,51 +406,304 @@ function createDetectorEngine(options) {
     return { level: 'standard', text: 'Standard sample', reason: 'At least 20 words and 2 sentences.' };
   }
 
-  function analyzeStyleCues(rawText, extracted) {
+  // Fixed, documented evidence tiers. Nothing here is fitted to data:
+  // definitive artifacts score 3, moderate families 1, and supporting
+  // formatting cues 0.5 only when another family also matched.
+  const FAMILY_INFO = {
+    'self-disclosure': { tier: 'definitive', evidence: 'artifact' },
+    'assistant-leftovers': { tier: 'definitive', evidence: 'artifact' },
+    'markup-artifacts': { tier: 'definitive', evidence: 'artifact' },
+    'ai-referral-link': { tier: 'moderate', evidence: 'artifact' },
+    'formulaic-framing': { tier: 'moderate', evidence: 'word-choice' },
+    'contrast-framing': { tier: 'moderate', evidence: 'word-choice' },
+    'ai-vocabulary': { tier: 'moderate', evidence: 'word-choice' },
+    'llm-phrasing': { tier: 'moderate', evidence: 'word-choice' },
+    'repeated-openings': { tier: 'moderate', evidence: 'structure' },
+    'sentence-uniformity': { tier: 'moderate', evidence: 'structure' },
+    'content-repetition': { tier: 'moderate', evidence: 'structure' },
+    'structured-presentation': { tier: 'supporting', evidence: 'structure' },
+    typography: { tier: 'supporting', evidence: 'structure' }
+  };
+  const TIER_POINTS = { definitive: 3, moderate: 1, supporting: 0.5 };
+  const STAMP_POINTS = { moderate: 1, high: 3 };
+
+  function compileTerms(terms, literal) {
+    return terms.map((term, key) => {
+      const source = (literal ? escapeRegExp(term) : term).replace(/ /g, '[ \\t]+');
+      const guard = term[0] === ',' ? '()' : '(^|[^\\p{L}\\p{N}])';
+      return { key, re: new RegExp(guard + '(' + source + ')(?=$|[^\\p{L}\\p{N}])', 'giu') };
+    });
+  }
+
+  // "TL;DR" and "if you're" were more common in human answers than in ChatGPT
+  // output, so the cue rules ignore them; the diagnostic features still count them.
+  const CUE_EXCLUDED = new Set(['tl;dr', 'tldr', "if you're"]);
+  const FRAMING_TERMS = Array.from(new Set([
+    ...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES, ...EXTRA_FRAMING, ...WEAK_FRAMING
+  ])).filter((phrase) => !CUE_EXCLUDED.has(phrase));
+  const WEAK_FRAMING_SET = new Set(WEAK_FRAMING);
+  const COMPILED = {
+    framing: compileTerms(FRAMING_TERMS, true),
+    buzz: compileTerms(BUZZ_TERMS, false),
+    vocabulary: compileTerms(AI_VOCABULARY, false),
+    phrasing: compileTerms(LLM_PHRASING, false)
+  };
+
+  const KNOWLEDGE_DISCLAIMER = /\b(?:as of my (?:last|latest|most recent) (?:knowledge |training )?(?:update|cutoff|cut-off|training(?: data)?)|my (?:knowledge|training(?: data)?) (?:cutoff|cut-off)|up to my (?:last |latest )?(?:knowledge |training )?(?:update|cutoff|cut-off)|i (?:don't|do not) have (?:access to )?(?:real-time|current|live) (?:information|data|updates)|i (?:don't|do not) have (?:the ability to browse|browsing capabilities|access to the internet)|i (?:don't|do not|cannot) have personal (?:opinions|feelings|beliefs|emotions|experiences|preferences))/gi;
+  const ASSISTANT_OPENER = /^[ \t]*(?:certainly|sure|absolutely|of course)[!,.][ \t]*(?:here(?:'s| is| are)|i(?:'d| would) be (?:happy|glad) to)\b/gim;
+  const DELIVERY_LINE = /^[ \t]*here(?:'s| is| are)[ \t]+(?:a|an|the|your|some|two|three|a few)[ \t]+(?:(?:revised|polished|refined|rewritten|updated|improved|shorter|longer|final|possible|sample|suggested|professional|engaging|catchy|concise|formal|casual|friendly|optimized|linkedin|twitter|facebook|instagram|youtube|social media|new|short|brief|quick)[ \t]+){0,2}(?:version|draft|post|tweet|thread|caption|reply|response|comment|message|email|bio|summary|rewrite|rewording|paraphrase)s?\b[^\n:]{0,60}:/gim;
+  const ASSISTANT_SIGNOFF = /\b(?:feel free to (?:customize|adjust|modify|tweak|tailor|personalize|adapt) (?:it|this|the (?:post|message|text|caption|draft))\b[^.!\n]{0,40}?(?:further|to (?:fit|suit|match|better)|as (?:needed|you see fit)|based on)|let me know if you(?:'d| would) like (?:me to (?:make|adjust|revise|tweak|change|expand|shorten|add|modify|create|write)|any (?:changes|adjustments|modifications|revisions|tweaks|edits))|would you like me to (?:adjust|revise|make|create|expand|shorten|add|tweak|write|draft|rewrite)|i hope this (?:post|draft|caption|version) (?:helps|works|meets|resonates|captures))/gi;
+  // Case-sensitive: chatbot placeholders use Title Case, while ironic human
+  // asides such as "[insert joke here]" usually do not.
+  const PLACEHOLDER = /\[(?:Your|Insert|Add|Enter) [A-Z][^\]\n]{0,40}\](?![ \t]*\()|\[(?:Company|Product|Brand|Event|Platform|Client|Recipient|Team|Organization|Business|Job|Website|Project|Book|Course|Industry|Location|City|Podcast|App|Service|Conference) (?:Name|Title|URL|Link|Website|Handle|Date)\]|\b(?:INSERT|PASTE)_[A-Z0-9_]+\b|\b20\d\d-(?:XX|xx)-(?:XX|xx)\b|https?:\/\/(?:www\.)?example\.com\/source\d*/g;
+  const EXTRA_MARKUP = /contentReference\[oaicite:\d+\](?:\{index=\d+\})?|\[oaicite:\d+\]|【\d+(?::\d+)?†[^】\n]{0,40}】|\bcite(?:turn\d+(?:search|news|view|file|image|fetch)\d+)+|<\|(?:im_end|endoftext|eot_id)\|>/g;
+  const MARKDOWN_HEADING = /^[ \t]*#{1,4}[ \t]+\p{L}[^\n]*/gmu;
+  const MARKDOWN_BOLD = /\*\*(?=\S)[^*\n]{1,80}?(?<=\S)\*\*/g;
+  const MARKDOWN_LINK = /\[[^\]\n]{1,80}\]\((?:https?:\/\/|www\.)[^)\s]+\)/g;
+  // Wikipedia "Signs of AI writing": parameters ChatGPT, Copilot and Grok add
+  // to links they cite. They show AI-tool involvement, not authorship.
+  const AI_REFERRAL_TEXT = /\b(?:utm_source=(?:chatgpt\.com|openai|copilot\.com)|referrer=grok\.com)\b/gi;
+  const AI_UTM_SOURCES = new Set(['chatgpt.com', 'openai', 'copilot.com']);
+
+  // "Not X, but Y" surface patterns. The first ten are ported from slop-score
+  // js/regexes-stage1.js, https://github.com/sam-paech/slop-score, under this notice:
+  //   MIT License. Copyright (c) 2025 Sam Paech
+  //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+  //   associated documentation files (the "Software"), to deal in the Software without restriction,
+  //   including without limitation the rights to use, copy, modify, merge, publish, distribute,
+  //   sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+  //   furnished to do so, subject to the following conditions: The above copyright notice and this
+  //   permission notice shall be included in all copies or substantial portions of the Software.
+  //   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+  //   NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  //   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+  //   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+  //   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+  const CONTRAST_PATTERNS = (() => {
+    const MAXG = 160;
+    const PRON = '(?:it|they|this|that)';
+    const BE = '(?:is|are|was|were)';
+    const BE_NEG = "(?:is\\s+not|are\\s+not|was\\s+not|were\\s+not|isn't|aren't|wasn't|weren't|ain't)";
+    const Q = '["“”\']?';
+    const START = '(?:(?<=^)|(?<=[.?!]\\s))';
+    const REPORTER = '(?![^.?!]{0,80}\\b(?:knew|know|thought|think|said|says|told|heard|learned)\\b[^.?!]{0,40}?\\bthat\\b)';
+    return [
+      `\\b(?:(?:${BE_NEG})|not(?!\\s+(?:that|only)\\b))\\s+(?:(?!\\bbut\\b|[.?!]).){1,100}?[,;:]\\s*but\\s+` +
+        '(?!when\\b|while\\b|which\\b|who\\b|whom\\b|whose\\b|where\\b|if\\b|that\\b|as\\b|because\\b|although\\b|though\\b|till\\b|until\\b|unless\\b|' +
+        'here\\b|there\\b|then\\b|my\\b|we\\b|I\\b|you\\b|it\\s+seems\\b|it\\s+appears\\b|it\\s+felt\\b|it\\s+looks?\\b|anything\\b)',
+      `\\b(?:\\w+n't|not)\\s+(?:just|only|merely)?\\s+(?:(?![.?!]).){1,${MAXG}}?(?:-|\\s-\\s|[—–])\\s*${PRON}\\s+(?:(?:'re|are|'s|is|were|was)\\b|(?!'re|are|'s|is|were|was)[*_~]*[a-z]\\w*)`,
+      `${START}\\s*${Q}(?:(?:${PRON}\\s+${BE}\\s+not)|(?:${PRON}\\s+${BE}n't)|(?:it's|they're|that's)\\s+not)\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}\\s+(?:${BE}|(?:'s|'re))\\b(?!\\s+not\\b)`,
+      `${START}\\s*${REPORTER}(?!\\s*not\\s+without\\b)(?![^.?!]{0,50}\\bnot\\s+put\\b)[^.?!]{0,${MAXG}}?\\b(?:${BE_NEG})\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}\\b(?:'re|\\s+(?:are|were|is|was))\\b(?!\\s+not\\b)`,
+      `${START}\\s*[^.?!]{0,${MAXG}}\\bno\\s+longer\\b[^.;:?!]{0,${MAXG}}[.;:?!]\\s*(?:it|they|this|that)\\s+(?:is|are|was|were)\\b(?!\\s+not\\b)`,
+      `${START}\\s*${Q}${PRON}\\b(?:'s|'re|\\s+(?:is|are|was|were))?\\s+not\\s+just\\b[^.?!]{0,${MAXG}}[.?!]\\s*${Q}${PRON}\\b(?:'s|'re|\\s+(?:is|are|was|were))\\b(?!\\s+not\\b)`,
+      `${START}[^.?!]*?\\b(?:do|does|did)n't\\b\\s+(?:(?:\\w+\\s+){0,2})([a-z]{3,})\\b[^.?!]*[.?!]\\s*${PRON}\\s+\\1(?:ed|es|s|ing)?\\b`,
+      `${START}\\s*${Q}(?!he\\b|she\\b|i\\b|you\\b|we\\b)${REPORTER}[^.?!]{0,${MAXG}}?\\b${BE_NEG}\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}it(?:'s|\\s+(?:is|are|was|were))\\b`,
+      `${START}[^.?!]{0,80}?\\b(?:(?:it|they)\\s+(?:is|are)|(?:it's|they're))\\s+not\\s+just\\b[^.?!]{0,${MAXG}}[.?!]\\s*(?:(?:it|they)\\s+(?:is|are)|(?:it's|they're))\\b`,
+      `${Q}${PRON}(?:'re|'s|\\s+(?:are|is|was|were))\\s+not\\s+just\\b[^"“”']{0,${MAXG}}${Q}\\s*(?:[^.?!]{0,80}\\b(?:said|asked|whispered|muttered|replied|added|shouted|cried)\\b[^.?!]{0,80}[.?!]\\s*)?${Q}${PRON}(?:'re|'s|\\s+(?:are|is|was|were))\\s+[*_~]?[a-z]\\w*`,
+      // Project additions: comma-spliced "it's not X, it's Y" and repeated-verb
+      // pivots such as "We aren't building X. We're building Y."
+      "\\b(?:it|this|that)(?:'s|\\s+is)\\s+not\\s+(?:just\\s+|only\\s+|about\\s+)?[^.?!,;\\n]{1,80}[,;]\\s*(?:it|this|that)(?:'s|\\s+is)\\b",
+      "\\b(we|you|they|i)\\s+(?:aren't|are\\s+not|weren't|were\\s+not|don't|do\\s+not|didn't|did\\s+not|'re\\s+not|'m\\s+not|am\\s+not)\\s+([a-z]{3,})\\b[^.?!\\n]{0,120}[.?!;—–]\\s*\\1(?:'re|'m|\\s+(?:are|am|were|do|did))?\\s+\\2\\b"
+    ].map((source) => new RegExp(source, 'gi'));
+  })();
+
+  function dropNested(spans) {
+    return spans.sort((a, b) => a.start - b.start || b.end - a.end)
+      .filter((span, index, all) => !all.slice(0, index).some((prior) => prior.start <= span.start && prior.end >= span.end));
+  }
+
+  function termSpans(parsed, compiled) {
+    const text = normalizeApostrophes(parsed.masked);
+    const spans = [];
+    for (const { key, re } of compiled) {
+      re.lastIndex = 0;
+      let match;
+      while ((match = re.exec(text))) {
+        const start = match.index + match[1].length;
+        const end = start + match[2].length;
+        if (!parsed.excluded.some((span) => start < span.end && end > span.start)) spans.push({ start, end, key });
+      }
+    }
+    return dropNested(spans);
+  }
+
+  function regexSpans(text, re, excluded) {
+    re.lastIndex = 0;
+    return Array.from(text.matchAll(re), (match) => ({ start: match.index, end: match.index + match[0].length }))
+      .filter((span) => span.end > span.start && !excluded.some((other) => span.start < other.end && span.end > other.start));
+  }
+
+  function mergeOverlapping(spans) {
+    const merged = [];
+    for (const span of spans.slice().sort((a, b) => a.start - b.start)) {
+      const last = merged[merged.length - 1];
+      if (last && span.start < last.end) last.end = Math.max(last.end, span.end);
+      else merged.push({ start: span.start, end: span.end });
+    }
+    return merged;
+  }
+
+  // Reads utm_source/referrer from a link, following one redirect wrapper
+  // such as l.facebook.com/l.php?u= or youtube.com/redirect?q=. Plain string
+  // parsing keeps this independent of the URL global.
+  function aiReferralSource(href) {
+    let value = String(href || '');
+    for (let depth = 0; depth < 2; depth += 1) {
+      const query = value.replace(/#.*$/, '');
+      const param = (name) => {
+        const match = query.match(new RegExp('[?&]' + name + '=([^&]*)', 'i'));
+        if (!match) return '';
+        try { return decodeURIComponent(match[1].replace(/\+/g, ' ')); } catch (error) { return match[1]; }
+      };
+      const source = param('utm_source').toLowerCase();
+      if (AI_UTM_SOURCES.has(source)) return 'utm_source=' + source;
+      if (param('referrer').toLowerCase() === 'grok.com') return 'referrer=grok.com';
+      const inner = ['u', 'url', 'q', 'target', 'dest', 'redirect'].map(param).find((candidate) => /^https?:\/\//i.test(candidate));
+      if (!inner) break;
+      value = inner;
+    }
+    return null;
+  }
+
+  function scoreFamilies(families, coverage, assessed) {
+    const counts = { definitive: 0, moderate: 0, supporting: 0 };
+    for (const family of families) counts[family.tier] += 1;
+    const core = counts.definitive * TIER_POINTS.definitive + counts.moderate * TIER_POINTS.moderate;
+    const points = core + (core > 0 ? counts.supporting * TIER_POINTS.supporting : 0);
+    let stamp = 'none';
+    if (assessed) {
+      if (coverage.level === 'short') stamp = counts.definitive ? 'high' : 'none';
+      else if (points >= STAMP_POINTS.high) {
+        // Correlated families are not independent confirmation: without a
+        // definitive artifact, high needs both word-choice and structure.
+        const kinds = new Set(families.map((family) => family.evidence));
+        stamp = counts.definitive || (kinds.has('word-choice') && kinds.has('structure')) ? 'high' : 'moderate';
+      } else if (points >= STAMP_POINTS.moderate) stamp = 'moderate';
+      // Rhythm and repetition rules each matched 2-5% of pre-2022 human
+      // answers (docs/accuracy-validation.md), so structure-only evidence
+      // needs two families before it can stamp.
+      const decisive = families.filter((family) => family.tier !== 'supporting');
+      if (stamp !== 'none' && !decisive.some((family) => family.evidence !== 'structure') && decisive.length < 2) stamp = 'none';
+    }
+    return { counts, points, stamp };
+  }
+
+  function analyzeStyleCues(rawText, extracted, context) {
     const parsed = extracted.parsed || parseText(rawText);
     const raw = parsed.masked;
+    const norm = normalizeApostrophes(raw);
+    const options = context || {};
     const coverage = heuristicCoverage(extracted.metrics);
     const families = [];
     const assessed = !['unsupported', 'uncertain'].includes(coverage.level);
     const prose = parsed.sentences.filter((sentence) => !sentence.isList);
     const proseTokens = prose.map(tokensWithOffsets);
     const proseWordCount = prose.reduce((sum, sentence) => sum + sentence.length, 0);
+    const inList = (span) => parsed.sentences.some((sentence) => sentence.isList && span.start < sentence.end && span.end > sentence.start);
     function add(id, name, detail, spans) {
-      families.push({ id, name, detail, spans: spans.slice(0, 8) });
+      const info = FAMILY_INFO[id];
+      families.push({ id, name, detail, spans: spans.slice(0, 8), tier: info.tier, evidence: info.evidence, points: TIER_POINTS[info.tier] });
     }
 
     if (assessed) {
-      const references = modelReferenceSpans(parsed);
+      // Definitive: wording or markup that an assistant emits and people
+      // rarely type. Quoted and code spans are already masked.
+      const references = [...modelReferenceSpans(parsed), ...regexSpans(norm, KNOWLEDGE_DISCLAIMER, parsed.excluded)];
+      if (references.length) {
+        add('self-disclosure', 'Model reference or capability disclaimer',
+          'Model-reference, knowledge-cutoff, or capability wording outside quotations or code.', mergeOverlapping(references));
+      }
+
+      const leftovers = mergeOverlapping([
+        ...regexSpans(norm, ASSISTANT_OPENER, parsed.excluded), ...regexSpans(norm, DELIVERY_LINE, parsed.excluded),
+        ...regexSpans(norm, ASSISTANT_SIGNOFF, parsed.excluded), ...regexSpans(raw, PLACEHOLDER, parsed.excluded)
+      ]);
+      if (leftovers.length) {
+        add('assistant-leftovers', 'Unedited assistant output',
+          leftovers.length + ' assistant preamble, sign-off, or unfilled placeholder' + (leftovers.length === 1 ? '' : 's') +
+            '. Someone may have pasted a chatbot reply without editing it.', leftovers);
+      }
+
       // Recognizable serialization remnants, not ordinary Markdown, Unicode,
       // or a model name. Quoted/code examples are masked by the shared parser.
-      const artifacts = Array.from(raw.matchAll(/<\|im_start\|>assistant\b|<\|start_header_id\|>assistant<\|end_header_id\|>|<\|start\|>assistant<\|message\|>|\uE200cite\uE202turn\d+(?:search|view|news|file)\d+[^\uE201\n]{0,180}\uE201/g),
-        (match) => ({ start: match.index, end: match.index + match[0].length }));
-      if (references.length || artifacts.length) {
-        add('self-disclosure', artifacts.length ? 'Model reference or assistant artifact' : 'Explicit model reference',
-          artifacts.length ? 'Recognizable assistant-role or citation markup outside quotations or code. It may also be reproduced by a person.' :
-            'Model-reference wording outside quotations or code.',
-          [...references, ...artifacts].sort((a, b) => a.start - b.start));
+      const artifacts = [
+        ...Array.from(raw.matchAll(/<\|im_start\|>assistant\b|<\|start_header_id\|>assistant<\|end_header_id\|>|<\|start\|>assistant<\|message\|>|\uE200cite\uE202turn\d+(?:search|view|news|file)\d+[^\uE201\n]{0,180}\uE201/g), (match) => ({ start: match.index, end: match.index + match[0].length })),
+        ...regexSpans(raw, EXTRA_MARKUP, parsed.excluded)
+      ];
+      const markdown = [];
+      if (!options.rendersMarkdown) {
+        const bold = regexSpans(raw, MARKDOWN_BOLD, parsed.excluded);
+        const headings = regexSpans(raw, MARKDOWN_HEADING, parsed.excluded);
+        const links = regexSpans(raw, MARKDOWN_LINK, parsed.excluded);
+        const boldLine = bold.some((span) => (span.start === 0 || raw[span.start - 1] === '\n') &&
+          (span.end === raw.length || raw[span.end] === '\n'));
+        if (bold.length >= 2 || boldLine || headings.length || links.length) markdown.push(...headings, ...links, ...bold);
+      }
+      if (artifacts.length || markdown.length) {
+        add('markup-artifacts', 'Assistant markup artifacts',
+          (artifacts.length ? artifacts.length + ' assistant-role or citation marker' + (artifacts.length === 1 ? '' : 's') + '. ' : '') +
+            (markdown.length ? 'Literal Markdown that this site does not render. ' : '') +
+            'Text copied from a chatbot keeps these; a person may also reproduce them.',
+          mergeOverlapping([...artifacts, ...markdown]));
       }
 
-      const framing = phraseSpans(parsed, [...PHRASES.template, ...PHRASES.transition, ...PHRASES.rhetorical, ...FRAMING_CUES]);
-      const buzz = phraseSpans(parsed, PHRASES.buzz);
-      // One everyday phrase or promotional adjective is too little to flag.
-      const distinctFraming = new Set(framing.map((span) => normalizeApostrophes(raw.slice(span.start, span.end)).toLowerCase()));
-      const distinctBuzz = new Set(buzz.map((span) => raw.slice(span.start, span.end).toLowerCase()));
-      // Repeated contrast templates are another framing cue, never another vote
-      // for the same family. A lone "not X, but Y" remains unremarkable.
-      const contrasts = Array.from(normalizeApostrophes(raw).matchAll(/\bnot(?:\s+just)?\b[^.!?\n]{6,100}[,;—–]\s*but\b[^.!?\n]{6,100}|\b(?:it|this|that)(?:\s+is(?:\s+not|n't)|'s\s+not)\b[^.!?\n]{6,100}[.!?]\s+(?:it(?:'s| is)|this is|that is)\b[^.!?\n]{6,100}/gi),
-        (match) => ({ start: match.index, end: match.index + match[0].length }))
-        .filter((span) => !parsed.excluded.some((excluded) => span.start < excluded.end && span.end > excluded.start) &&
-          !parsed.sentences.some((sentence) => sentence.isList && span.start < sentence.end && span.end > sentence.start));
-      const repeatedContrast = proseWordCount >= 40 && contrasts.length >= 2;
-      if (distinctFraming.size >= 2 || (distinctFraming.size && distinctBuzz.size >= 2) || repeatedContrast) {
+      const referralSpans = regexSpans(norm, AI_REFERRAL_TEXT, parsed.excluded);
+      const referralLinks = Array.from(new Set((options.links || []).map(aiReferralSource).filter(Boolean)));
+      if (referralSpans.length || referralLinks.length) {
+        add('ai-referral-link', 'Link copied from an AI assistant',
+          (referralLinks.length ? 'Linked URL carries ' + referralLinks.join(', ') + '. ' : '') +
+            'AI assistants add these tracking parameters to links they cite. This shows an AI tool was used, not that it wrote the post.',
+          referralSpans);
+      }
+
+      // Moderate, word choice.
+      const framingSpans = termSpans(parsed, COMPILED.framing);
+      const framingKeys = (spans) => new Set(spans.map((span) => FRAMING_TERMS[span.key]));
+      const distinct = framingKeys(framingSpans);
+      const weak = Array.from(distinct).filter((phrase) => WEAK_FRAMING_SET.has(phrase));
+      const strong = distinct.size - weak.length;
+      const effective = strong + (weak.length >= 3 ? weak.length : 0);
+      const needed = Math.max(2, Math.ceil(proseWordCount / 120));
+      const buzzSpans = termSpans(parsed, COMPILED.buzz);
+      const distinctBuzz = new Set(buzzSpans.map((span) => span.key));
+      if (effective >= needed || (strong >= 1 && distinctBuzz.size >= 2)) {
         add('formulaic-framing', 'Stock framing phrases',
-          distinctFraming.size + ' distinct framing phrases; ' + distinctBuzz.size + ' promotional terms.' +
-            (repeatedContrast ? ' ' + contrasts.length + ' repeated contrast constructions.' : ''),
-          [...framing, ...buzz, ...(repeatedContrast ? contrasts : [])].sort((a, b) => a.start - b.start));
+          strong + ' distinct framing phrase' + (strong === 1 ? '' : 's') + ' (' + needed + ' needed at this length); ' +
+            weak.length + ' common phrases counted only in threes; ' + distinctBuzz.size + ' promotional terms.',
+          [...framingSpans.filter((span) => effective >= needed || !WEAK_FRAMING_SET.has(FRAMING_TERMS[span.key])), ...buzzSpans]
+            .sort((a, b) => a.start - b.start));
       }
 
+      // Repeated "not X, but Y" pivots. A lone contrast remains unremarkable.
+      // In-sentence "not X, but Y" is a common human hedge ("I'm not a
+      // physicist, but …"), so it counts half unless it is the assistant's
+      // "not just/merely/simply X, but Y"; sentence-level pivots count once.
+      const notBut = regexSpans(norm, CONTRAST_PATTERNS[0], parsed.excluded).filter((span) => !inList(span));
+      const balanced = notBut.filter((span) => /\bnot\s+(?:just|merely|simply)\b/i.test(norm.slice(span.start, span.end)));
+      const pivots = mergeOverlapping(CONTRAST_PATTERNS.slice(1).flatMap((re) => regexSpans(norm, re, parsed.excluded)))
+        .filter((span) => !inList(span) && !notBut.some((other) => span.start < other.end && span.end > other.start));
+      const contrastWeight = pivots.length + balanced.length + (notBut.length - balanced.length) / 2;
+      if ((contrastWeight >= 2 && proseWordCount >= 30) || contrastWeight >= 3) {
+        const contrasts = mergeOverlapping([...pivots, ...notBut]);
+        add('contrast-framing', 'Repeated contrast pivots',
+          contrasts.length + ' "not X, but Y" or "it isn\'t X. It\'s Y" constructions. People use them too; repetition is the signal.', contrasts);
+      }
+
+      const vocabulary = termSpans(parsed, COMPILED.vocabulary);
+      const distinctVocabulary = new Set(vocabulary.map((span) => span.key));
+      if (distinctVocabulary.size >= 3 && distinctVocabulary.size * 100 / Math.max(1, extracted.metrics.wordCount) >= 1) {
+        add('ai-vocabulary', 'Words LLMs overuse',
+          distinctVocabulary.size + ' distinct words that chatbots use far more than people (for example delve, tapestry, pivotal). One or two can be coincidence.',
+          vocabulary);
+      }
+
+      const phrasing = termSpans(parsed, COMPILED.phrasing);
+      if (phrasing.length >= 2) {
+        add('llm-phrasing', 'Copula avoidance and trailing -ing clauses',
+          phrasing.length + ' constructions such as "serves as", "plays a crucial role", or ", highlighting …".', phrasing);
+      }
+
+      // Moderate, structure.
       const openingGroups = new Map();
       for (const tokens of proseTokens) {
         if (tokens.length < 2) continue;
@@ -395,35 +723,16 @@ function createDetectorEngine(options) {
           !parsed.excluded.some((span) => tokens[0].start < span.end && tokens[sharedLength].end > span.start))) sharedLength += 1;
         spans.forEach((span, index) => { span.end = groups[index][sharedLength - 1].end; });
       }
-      // Common function-word starts need three occurrences and a shared third
-      // word; two instances of "it is" alone are ordinary prose.
+      // Two shared openings are ordinary ("For example", "I think"); require
+      // three, or two that share four or more words.
       const openingSpans = repeatedOpenings.filter((spans) => {
         const tokens = tokenize(raw.slice(spans[0].start, spans[0].end));
-        return !tokens.slice(0, 2).every((word) => STOPWORDS.has(word)) ||
-          (spans.length >= 3 && tokens.length >= 3);
+        if (tokens.slice(0, 2).every((word) => STOPWORDS.has(word))) return spans.length >= 3 && tokens.length >= 3;
+        return spans.length >= 3 || tokens.length >= 4;
       }).flat();
       if (prose.length >= 3 && openingSpans.length) {
         add('repeated-openings', 'Repeated sentence openings',
           openingSpans.length + ' of ' + prose.length + ' prose sentences reuse a multiword opening.', openingSpans);
-      }
-
-      const listSpans = [];
-      let lineOffset = 0;
-      for (const line of raw.split('\n')) {
-        if (LIST_MARKER.test(line) && line.trim()) {
-          listSpans.push({ start: lineOffset + line.length - line.trimStart().length, end: lineOffset + line.length });
-        }
-        lineOffset += line.length + 1;
-      }
-      const punctuation = Array.from(raw.matchAll(/:(?!\/\/)|[—–]/g), (match) => ({ start: match.index, end: match.index + 1 }));
-      const colons = punctuation.filter((span) => raw[span.start] === ':').length;
-      const dashes = (raw.match(/[—–]/g) || []).length;
-      if (listSpans.length >= 3 || (extracted.metrics.wordCount >= 30 &&
-        ((colons >= 2 && dashes >= 1) || dashes >= 3) &&
-        punctuation.length * 100 / extracted.metrics.wordCount >= 4)) {
-        add('structured-presentation', 'List and punctuation structure',
-          listSpans.length + ' list items; ' + colons + ' colons; ' + dashes + ' dashes.',
-          listSpans.length >= 3 ? listSpans : punctuation);
       }
 
       const lengths = prose.map((sentence) => sentence.length);
@@ -445,8 +754,7 @@ function createDetectorEngine(options) {
             const start = words[0].start;
             const end = words[words.length - 1].end;
             if (parsed.excluded.some((span) => start < span.end && end > span.start)) continue;
-            if (families.some((family) => family.id === 'repeated-openings') &&
-              openingSpans.some((span) => start < span.end && end > span.start)) continue;
+            if (openingSpans.some((span) => start < span.end && end > span.start)) continue;
             const key = words.map((token) => token.word).join(' ');
             if (!patterns.has(key)) patterns.set(key, { size, spans: [] });
             const candidate = patterns.get(key);
@@ -474,11 +782,58 @@ function createDetectorEngine(options) {
         add('content-repetition', 'Repeated phrases',
           Math.round(repetitionRate * 100) + '% of prose words repeat an earlier 3–5-word phrase. List items and counted openings are excluded.', selected);
       }
+
+      // Supporting: formatting people also use. Counts only alongside another family.
+      const listSpans = [];
+      let lineOffset = 0;
+      for (const line of raw.split('\n')) {
+        if (LIST_MARKER.test(line) && line.trim()) {
+          listSpans.push({ start: lineOffset + line.length - line.trimStart().length, end: lineOffset + line.length });
+        }
+        lineOffset += line.length + 1;
+      }
+      // Clock times (10:30), ratios and numeric ranges (2015–2019) are not
+      // presentation punctuation.
+      const punctuation = Array.from(raw.matchAll(/(?<!\d):(?!\/\/|\d)|(?<!\d)[—–](?!\d)/g), (match) => ({ start: match.index, end: match.index + 1 }));
+      const colons = punctuation.filter((span) => raw[span.start] === ':').length;
+      const dashes = punctuation.length - colons;
+      if (listSpans.length >= 3 || (extracted.metrics.wordCount >= 30 &&
+        ((colons >= 2 && dashes >= 1) || dashes >= 3) &&
+        punctuation.length * 100 / extracted.metrics.wordCount >= 4)) {
+        add('structured-presentation', 'List and punctuation structure',
+          listSpans.length + ' list items; ' + colons + ' colons; ' + dashes + ' dashes.',
+          listSpans.length >= 3 ? listSpans : punctuation);
+      }
+
+      const typographySpans = [];
+      lineOffset = 0;
+      const lines = raw.split('\n');
+      lines.forEach((line, index) => {
+        const trimmed = line.trim();
+        const start = lineOffset + line.length - line.trimStart().length;
+        lineOffset += line.length + 1;
+        if (!trimmed || index === lines.length - 1 || /[.!?,;:]$/.test(trimmed)) return;
+        const words = trimmed.split(/\s+/).filter((word) => /\p{L}/u.test(word));
+        const major = words.filter((word) => word.replace(/[^\p{L}]/gu, '').length >= 4);
+        if (words.length >= 3 && words.length <= 10 && major.length >= 2 && !LIST_MARKER.test(line) &&
+          major.every((word) => /^[^\p{L}]*\p{Lu}/u.test(word)) && trimmed !== trimmed.toUpperCase()) {
+          typographySpans.push({ start, end: start + trimmed.length });
+        }
+      });
+      // Curly quotes are not counted: iOS and macOS insert them automatically.
+      if (typographySpans.length) {
+        add('typography', 'Title Case headings',
+          typographySpans.length + ' Title Case heading line' + (typographySpans.length === 1 ? '' : 's') + '. Editors and some writers use these too.',
+          typographySpans);
+      }
     }
-    const level = !assessed ? 'unassessed' : families.length === 0 ? 'cue-none' : families.length === 1 ? 'cue-one' : 'cue-multiple';
+    const score = scoreFamilies(families, coverage, assessed);
+    const level = !assessed ? 'unassessed' : score.stamp === 'high' ? 'cue-high' : score.stamp === 'moderate' ? 'cue-moderate' :
+      families.length ? 'cue-weak' : 'cue-none';
     return {
       level, text: assessed ? families.length + ' matched' : 'Not assessed',
-      families, totalFamilies: 6, coverage, assessed
+      families, totalFamilies: Object.keys(FAMILY_INFO).length, coverage, assessed,
+      points: score.points, stamp: score.stamp, tierCounts: score.counts
     };
   }
 
@@ -520,7 +875,7 @@ function createDetectorEngine(options) {
       return { state: 'unsupported', latinRatio, reason: 'non-Latin or mixed-script text' };
     }
     const sharedWords = new Set(['a', 'an', 'i', 'no', 'me', 'so', 'he', 'be', 'on']);
-    const englishWords = tokens.filter((token) => STOPWORDS.has(token) && !sharedWords.has(token));
+    const englishWords = tokens.filter((token) => ENGLISH_EVIDENCE.has(token) && !sharedWords.has(token));
     if (new Set(englishWords).size < 2 || englishWords.length / Math.max(1, tokens.length) < 0.1) {
       return { state: 'uncertain', latinRatio, reason: 'Too little English language evidence for these English cue rules.' };
     }
@@ -821,7 +1176,7 @@ function createDetectorEngine(options) {
     const calibrated = Boolean(calibration && Number.isFinite(calibration.slope) && Number.isFinite(calibration.intercept));
     const lightweight = !calibrated && !(options && options.diagnostics);
     const extracted = extractFeatures(rawText, safeContext, { lightweight });
-    const cueAssessment = analyzeStyleCues(rawText, extracted);
+    const cueAssessment = analyzeStyleCues(rawText, extracted, safeContext);
     const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
     for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
     const shared = {
@@ -918,8 +1273,11 @@ function createDetectorEngine(options) {
 
 function aiHeuristicReadContent(node, options = {}) {
   const excluded = { quotes: 0, code: 0 };
-  if (!node) return { text: '', excluded };
+  if (!node) return { text: '', excluded, links: [] };
   const parts = [];
+  // Link targets of author-owned text only (quotes/code/UI are skipped
+  // below). The detector reads AI-assistant tracking parameters from them.
+  const links = [];
   const blocks = new Set(['DIV', 'P', 'LI', 'UL', 'OL', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
   const preserveLines = /pre|break-spaces/.test(window.getComputedStyle(node).whiteSpace);
   function visit(current, preserve, inList = false) {
@@ -941,6 +1299,10 @@ function aiHeuristicReadContent(node, options = {}) {
       return;
     }
     if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
+    if (current.tagName === 'A' && links.length < 20) {
+      const href = current.getAttribute('href');
+      if (href && !links.includes(href)) links.push(href);
+    }
     const block = blocks.has(current.tagName);
     // A list item's own paragraphs stay on its marked line. Nested lists
     // retain separate item boundaries so prose checks cannot reuse list text.
@@ -955,7 +1317,7 @@ function aiHeuristicReadContent(node, options = {}) {
   visit(node, preserveLines);
   const text = parts.join('').replace(/\u00a0/g, ' ').replace(/[^\S\n]+/g, ' ')
     .replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { text, excluded };
+  return { text, excluded, links };
 }
 
 function aiHeuristicTextContent(node) {
@@ -1130,6 +1492,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
     .ai-heuristic-popover .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-popover .ai-heuristic-cue-tier { display: block; color: var(--aih-muted); font-size: .85em; margin-top: 2px; }
     .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
@@ -1419,12 +1782,23 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    return analysis.cueAssessment.families.length >= 3 ? 'high' : 'moderate';
+    return analysis.cueAssessment.stamp === 'high' ? 'high' : 'moderate';
+  }
+
+  function formatPoints(points) {
+    const value = Number.isFinite(points) ? points : 0;
+    return (Number.isInteger(value) ? String(value) : value.toFixed(1)) + (value === 1 ? ' point' : ' points');
   }
 
   function cueCount(cues) {
-    return cues.families.length + '/' + cues.totalFamilies + ' cues';
+    return formatPoints(cues.points) + ' · ' + cues.families.length + (cues.families.length === 1 ? ' pattern' : ' patterns');
   }
+
+  const TIER_LABELS = {
+    definitive: 'Strong artifact · 3 points',
+    moderate: 'Pattern · 1 point',
+    supporting: 'Formatting · 0.5 points with another pattern'
+  };
 
   function cancelPopoverClose() {
     if (popoverCloseTimer !== null) window.clearTimeout(popoverCloseTimer);
@@ -1453,7 +1827,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.setAttribute('aria-expanded', 'false');
     badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
     badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
-      cues.families.length + ' of ' + cues.totalFamilies + ' cue families matched. ' +
+      cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched, ' + formatPoints(cues.points) + '. ' +
       cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
     badge.addEventListener('pointerenter', (event) => {
       if (event.pointerType === 'touch') return;
@@ -1519,7 +1893,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     } else {
       const cues = analysis.cueAssessment;
       lines.splice(2, 0,
-        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
+        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families; ${formatPoints(cues.points)}; stamp ${cues.stamp || 'none'}`,
+        `Families: ${cues.families.map((family) => family.id + ' (' + family.tier + ')').join(', ') || 'none'}`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
         analysis.modelAvailable === false ? 'Diagnostic model: unavailable for this platform' :
           `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
@@ -1641,14 +2016,16 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Moderate means 1–2 families; high means 3 or more. ' +
-        'Repeated matches within one family count once.'));
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
+        'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1; ' +
+        'formatting counts 0.5 only alongside another pattern. Moderate starts at 1 point and high at 3. ' +
+        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
       'These are writing-pattern matches, not proof of AI authorship. Human writing can match them; AI writing can match none. ' +
-      'The level counts patterns, not the probability that AI wrote this text.'));
+      'The level adds fixed points per pattern; it is not the probability that AI wrote this text.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -1661,6 +2038,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       for (const family of cues.families) {
         const item = document.createElement('li');
         item.appendChild(createElement('strong', '', family.name));
+        if (TIER_LABELS[family.tier]) item.appendChild(createElement('span', 'ai-heuristic-cue-tier', TIER_LABELS[family.tier]));
         item.appendChild(createElement('p', 'ai-heuristic-cue-detail', family.detail));
         appendCueExamples(item, analysis.sourceText, family.spans);
         list.appendChild(item);
@@ -1739,7 +2117,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function shouldHide(analysis) {
     const cues = analysis.cueAssessment;
-    return !cues.assessed || !cues.families.length || (settings.hideInsufficient && cues.coverage.level === 'short');
+    const stamp = typeof cues.stamp === 'string' ? cues.stamp : cues.families.length ? 'moderate' : 'none';
+    return !cues.assessed || stamp === 'none' || (settings.hideInsufficient && cues.coverage.level === 'short');
   }
 
   function sizeStamp(badge, host) {
@@ -1798,7 +2177,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       records.delete(element);
       return;
     }
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
+    const links = Array.isArray(content.links) ? content.links.filter((href) => typeof href === 'string').slice(0, 20) : [];
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + links.join(' ') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
@@ -1815,7 +2195,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     let analysis = analysisCache.get(cacheKey);
     if (!analysis) {
-      analysis = engine.analyze(text, { kind, excluded }, settings);
+      analysis = engine.analyze(text, { kind, excluded, links, rendersMarkdown: adapter.rendersMarkdown === true }, settings);
       analysisCache.set(cacheKey, analysis);
       if (analysisCache.size > 128) analysisCache.delete(analysisCache.keys().next().value);
     }
@@ -2174,6 +2554,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
  * @property {(element: Element, kind: string) => AIContent|null} extractContent
  * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
  * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
+ * @property {boolean} [rendersMarkdown] True when the site renders Markdown, so literal `**bold**` cannot be a paste artifact.
  * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
  * @property {{start: string, finish: string}} [navigationEvents] Document events bracketing SPA page replacement.
  * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
@@ -2199,6 +2580,9 @@ function validateAIAdapter(adapter, entry) {
   }
   for (const name of ['kindForElement', 'supportsUrl']) {
     if (adapter[name] !== undefined && typeof adapter[name] !== 'function') throw new Error('Invalid optional adapter method');
+  }
+  if (adapter.rendersMarkdown !== undefined && typeof adapter.rendersMarkdown !== 'boolean') {
+    throw new Error('Invalid rendersMarkdown flag');
   }
   if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
     adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {
@@ -2562,6 +2946,7 @@ function createPlatformAdapter() {
       return {
         text: title.text + '\n' + body.text,
         host: body.host,
+        links: [...(title.links || []), ...(body.links || [])],
         excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
       };
     }
@@ -2571,6 +2956,8 @@ function createPlatformAdapter() {
   return {
     id: 'reddit',
     name: 'Reddit',
+    // Reddit renders Markdown, so literal **bold** is not a chatbot-paste artifact here.
+    rendersMarkdown: true,
     postSelector,
     commentSelector,
     isTopLevel(element, kind) {
@@ -2737,13 +3124,15 @@ function createPlatformAdapter() {
       const bodies = commentBodies(element);
       if (!bodies.length) return null;
       const excluded = { quotes: 0, code: 0 };
+      const links = [];
       const text = bodies.map(body => {
         const content = aiHeuristicReadContent(body, { quoteSelector });
         excluded.quotes += content.excluded.quotes;
         excluded.code += content.excluded.code;
+        links.push(...content.links);
         return content.text;
       }).filter(Boolean).join('\n');
-      return { text, excluded, host: bodies[bodies.length - 1] };
+      return { text, excluded, links, host: bodies[bodies.length - 1] };
     },
     placeBadge(element, badge, kind, content) {
       const textHost = kind === 'comment' ? commentBodies(element)[0] || content.host : content.host;
@@ -2874,5 +3263,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"},{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.9.1",distribution:"combined"});
+  bootAIHeuristic([{"id":"linkedin","name":"LinkedIn","hosts":["www.linkedin.com","linkedin.com","*.linkedin.com","m.linkedin.com"],"status":"stable","capabilities":["feed","profile activity","permalinks","comments","collapsed text"],"excludedPaths":["/messaging"]},{"id":"x","name":"X / Twitter","hosts":["x.com","www.x.com","twitter.com","www.twitter.com"],"status":"stable","capabilities":["posts","replies","quoted-post exclusion"],"excludedPaths":["/messages"]},{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]},{"id":"facebook","name":"Facebook","hosts":["www.facebook.com","facebook.com"],"status":"experimental","capabilities":["desktop message anchors (fixtures)","post dialogs (fixtures)","permalink comments/replies (fixtures)"],"excludedPaths":["/messages","/messenger","/groups","/marketplace","/stories","/reel","/reels","/watch","/gaming","/notifications","/events","/settings","/privacy","/business","/ads","/login","/checkpoint","/photos","/videos","/search"],"settingsStorage":"manager"},{"id":"youtube","name":"YouTube","hosts":["www.youtube.com"],"status":"experimental","capabilities":["desktop watch descriptions (fixtures + Safari)","comments and replies (fixtures + Safari)","channel Posts and post permalinks (fixtures + Safari)"],"excludedPaths":["/shorts","/live_chat","/live_chat_replay","/embed","/results","/feed","/playlist","/account","/premium","/gaming","/clip"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"linkedin:post":{"intercept":-0.35,"weights":{"aiHedgePresent":2.2,"buzzPer100w":1.0,"templatePer100w":0.9,"discoursePer100w":0.7,"bigramRepeatRatio":1.1,"trigramRepeatRatio":0.7,"sentenceStarterRepeatRatio":0.6,"mattr25":-0.8,"sentenceLenCV":-0.8,"avgSentenceLen":0.6,"wordLenCV":-0.2,"paragraphLenCV":-0.15,"contractionRatio":-0.15,"listMarkerCount":0.45,"colonPer100w":0.25,"commaPer100w":0.18,"exclamationsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.55,"strong":0.72,"target_fpr":null,"method":"experimental-default"}},"linkedin:comment":{"intercept":-0.55,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.8,"discoursePer100w":0.55,"bigramRepeatRatio":0.95,"trigramRepeatRatio":0.55,"sentenceStarterRepeatRatio":0.5,"mattr25":-0.7,"sentenceLenCV":-0.75,"avgSentenceLen":0.55,"wordLenCV":-0.15,"contractionRatio":-0.15,"exclamationsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.57,"strong":0.75,"target_fpr":null,"method":"experimental-default"}},"x:post":{"intercept":-0.25,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.4,"mattr25":-0.7,"sentenceLenCV":-0.7,"avgSentenceLen":0.5,"wordLenCV":-0.15,"contractionRatio":-0.18,"colonPer100w":0.18,"commaPer100w":0.15,"exclamationsPer100w":0.2,"questionsPer100w":0.12,"topWordShare":0.25},"calibration":null,"thresholds":{"moderate":0.58,"strong":0.76,"target_fpr":null,"method":"experimental-default"}},"x:comment":{"intercept":-0.35,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.12,"contractionRatio":-0.18,"exclamationsPer100w":0.18,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.6,"strong":0.78,"target_fpr":null,"method":"experimental-default"}},"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.10.0",distribution:"combined"});
 })();

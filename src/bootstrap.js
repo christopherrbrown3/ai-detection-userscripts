@@ -14,6 +14,7 @@
  * @property {(element: Element, kind: string) => AIContent|null} extractContent
  * @property {(element: Element, badge: Element, kind: string, content: AIContent) => void} placeBadge
  * @property {string[]} [observedAttributes] Extra candidate-affecting attributes.
+ * @property {boolean} [rendersMarkdown] True when the site renders Markdown, so literal `**bold**` cannot be a paste artifact.
  * @property {(url: URL) => boolean} [supportsUrl] Additional route eligibility.
  * @property {{start: string, finish: string}} [navigationEvents] Document events bracketing SPA page replacement.
  * Factories must be side-effect-free. Scheduling, UI, storage and analysis belong
@@ -39,6 +40,9 @@ function validateAIAdapter(adapter, entry) {
   }
   for (const name of ['kindForElement', 'supportsUrl']) {
     if (adapter[name] !== undefined && typeof adapter[name] !== 'function') throw new Error('Invalid optional adapter method');
+  }
+  if (adapter.rendersMarkdown !== undefined && typeof adapter.rendersMarkdown !== 'boolean') {
+    throw new Error('Invalid rendersMarkdown flag');
   }
   if (adapter.observedAttributes !== undefined && (!Array.isArray(adapter.observedAttributes) ||
     adapter.observedAttributes.some((name) => typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)))) {

@@ -137,13 +137,15 @@ function createPlatformAdapter() {
       const bodies = commentBodies(element);
       if (!bodies.length) return null;
       const excluded = { quotes: 0, code: 0 };
+      const links = [];
       const text = bodies.map(body => {
         const content = aiHeuristicReadContent(body, { quoteSelector });
         excluded.quotes += content.excluded.quotes;
         excluded.code += content.excluded.code;
+        links.push(...content.links);
         return content.text;
       }).filter(Boolean).join('\n');
-      return { text, excluded, host: bodies[bodies.length - 1] };
+      return { text, excluded, links, host: bodies[bodies.length - 1] };
     },
     placeBadge(element, badge, kind, content) {
       const textHost = kind === 'comment' ? commentBodies(element)[0] || content.host : content.host;

@@ -63,7 +63,9 @@ test('cue rubric distinguishes a highly patterned post from an irregular anecdot
     { kind: 'post' },
     { sensitivity: 'balanced' }
   );
-  assert.equal(patterned.label.level, 'cue-one');
+  // A list alone is supporting evidence: reported, but never stamped by itself.
+  assert.equal(patterned.label.level, 'cue-weak');
+  assert.equal(patterned.cueAssessment.stamp, 'none');
   assert.equal(patterned.label.text, `${patterned.cueAssessment.families.length} matched`);
   assert.equal(anecdote.label.level, 'cue-none');
   assert.ok(patterned.cueAssessment.families.length > anecdote.cueAssessment.families.length);
@@ -79,7 +81,8 @@ test('uncalibrated cue rubric presents an exact family count', () => {
     { sensitivity: 'balanced' }
   );
   assert.equal(analysis.label.text, `${analysis.cueAssessment.families.length} matched`);
-  assert.ok(['cue-none', 'cue-one', 'cue-multiple'].includes(analysis.label.level));
+  assert.ok(['cue-none', 'cue-weak', 'cue-moderate', 'cue-high'].includes(analysis.label.level));
+  assert.equal(analysis.cueAssessment.points, analysis.cueAssessment.families.reduce((sum, family) => sum + family.points, 0));
 });
 
 test('held-out calibration metadata changes the runtime score path', () => {

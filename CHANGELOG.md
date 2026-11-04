@@ -2,6 +2,17 @@
 
 All notable changes are documented here.
 
+## 0.10.0 - 2026-11-04
+
+- Score evidence with fixed, documented points instead of counting families: strong artifacts 3, patterns 1, formatting 0.5 only alongside another family. Moderate stamps start at 1 point and high at 3; high without an artifact needs both word-choice and structure evidence. Rhythm and repetition alone need two families, and short samples stamp only on strong artifacts.
+- Add strong-artifact checks: knowledge-cutoff and capability disclaimers, assistant openers, delivery lines and sign-offs, Title Case placeholders such as `[Your Name]`, `oaicite`/`contentReference` and other citation remnants, and literal Markdown on sites that do not render it (adapters may declare `rendersMarkdown`; Reddit does).
+- Read author-owned link targets and flag AI-assistant tracking parameters (`utm_source=chatgpt.com`, `openai`, `copilot.com`, `referrer=grok.com`), including through Facebook and YouTube redirect wrappers. This is a pattern, not a strong artifact: it shows tool use, not authorship.
+- Add pattern families for repeated "not X, but Y" pivots (surface regexes ported from slop-score, MIT), LLM-overused vocabulary (several distinct words required), and copula avoidance or trailing "-ing" clauses. Match promotional terms by inflection.
+- Reduce false positives found on pre-ChatGPT human answers: scale stock framing with length, count common phrases only in threes and ignore `TL;DR` and "if you're"; require three repeated openings (or two sharing four words); ignore clock times and numeric ranges in punctuation clusters; treat lists as formatting evidence.
+- Recognize emoji and keycap bullets as list items (mirrored in the Python features). Keep conditional abbreviations such as `a.m.`, `Inc.` and `No. 5` inside sentences. Count English contractions as language evidence so punchy, contraction-heavy text is assessed.
+- Add `scripts/evaluate_rubric.mjs`, `scripts/prepare_hc3.py` and `research/` signals. On HC3, human answers are stamped 0.4% (ELI5) and 0.7% (held-out finance), down from 9.6% and 13.4%; ChatGPT recall is 23–26%, down from 69%. ZipPy compression (AUC 0.95, strongly length-dependent), Biber-style rates and slop lists were measured but not shipped. See [accuracy validation](docs/accuracy-validation.md).
+- Cue analysis version `browser-cues-v6`. Diagnostic feature definitions, model weights and settings keys are unchanged. Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## 0.8.0 - 2026-10-27
 
 - Recognize more stock-framing variants, three repeated function-word openings, and arrow/checkmark list markers. Keep combined-phrase thresholds, short-sample warnings, quote/code exclusions, and list/prose separation.

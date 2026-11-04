@@ -135,7 +135,10 @@ MODEL_REFERENCE_RE = re.compile(
     r"(?=$|[ \t]*(?:[,;:!?.]|\b(?:i|and|but|can|cannot|do|don't|will|am|was|that|designed|trained)\b))",
     re.I,
 )
-LIST_MARKER_RE = re.compile(r"^[ \t]*(?:[-*•→➜➔►▸✓✔☑✅]\ufe0f?|\d+[.)])[ \t]+")
+LIST_MARKER_RE = re.compile(
+    r"^[ \t]*(?:[-*•→➜➔►▸✓✔☑✅]\ufe0f?|\d+[.)]|\d\ufe0f?\u20e3|"
+    r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]\ufe0f?)[ \t]+"
+)
 
 
 def fnv1a_units(units: Iterable[int]) -> int:
@@ -180,6 +183,12 @@ def parse_text(text: str) -> Tuple[str, List[str]]:
 
     raw = re.sub(exclusion, mask, raw, flags=re.M)
     abbreviations = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "u.s", "u.k"}
+    # Mirrors detector.js: these end a sentence only before an uppercase word.
+    conditional = {
+        "a.m", "p.m", "inc", "ltd", "co", "corp", "approx", "min", "max", "no", "fig", "vol",
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "est", "dept", "govt", "ft",
+        "lb", "lbs", "oz", "hr", "hrs", "sec", "ave", "blvd", "rd", "pp", "ca", "al", "cf",
+    }
     sentences = []
     start = 0
     for match in re.finditer(r"[.!?]+(?:[)\]]+)?(?=\s|$)|\n+", raw):
@@ -188,6 +197,8 @@ def parse_text(text: str) -> Tuple[str, List[str]]:
             word_match = re.search(r"([A-Za-z.]+)$", prefix)
             word = word_match.group(1) if word_match else ""
             if word.lower() in abbreviations or re.fullmatch(r"[A-Z]", word) or re.fullmatch(r"\s*\d+", prefix):
+                continue
+            if word.lower() in conditional and re.match(r"[ \t]*[a-z0-9]", raw[match.end():]):
                 continue
         piece = raw[start:match.end()].strip()
         if tokenize(piece):

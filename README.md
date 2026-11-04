@@ -41,16 +41,26 @@ The target is the current [Userscripts](https://github.com/quoid/userscripts) ex
 
 ## What the badge means
 
-Posts with matched patterns get a small **AI Detected** stamp beside the title or author at the top of the post. If a recognizable header is unavailable, the stamp sits above the text. Its height matches the post's text line height. Posts with no matches, or text the English rules cannot assess, have **no badge**.
+Posts with enough matched evidence get a small **AI Detected** stamp beside the title or author at the top of the post. If a recognizable header is unavailable, the stamp sits above the text. Its height matches the post's text line height. Posts with too little evidence, or text the English rules cannot assess, have **no badge**.
 
-- **Orange / moderate:** 1–2 of the six pattern families match.
-- **Red / high:** 3–6 families match. A double border also distinguishes high signal levels without relying only on color.
+Evidence is scored with fixed, documented points (version 0.10):
+
+| Tier | Points | Families |
+| --- | --- | --- |
+| Strong artifact | 3 | Model self-reference or knowledge-cutoff disclaimer; unedited assistant output (preambles such as "Sure! Here's a revised version:", sign-offs, unfilled `[Your Name]` placeholders); assistant markup (`oaicite` citations, chat tokens, literal Markdown on sites that do not render it) |
+| Pattern | 1 | Link copied from an AI assistant (`utm_source=chatgpt.com` and similar); stock framing phrases; repeated "not X, but Y" pivots; words LLMs overuse; copula avoidance and trailing "-ing" clauses; repeated sentence openings; similar sentence lengths; repeated phrases |
+| Formatting | 0.5 | Lists and colon/dash structure; Title Case headings. These count only alongside another family |
+
+- **Orange / moderate:** 1–2.5 points.
+- **Red / high:** 3 points or more. Without a strong artifact, high also needs both word-choice and structure evidence. A double border distinguishes high without relying only on color.
+- **Rhythm and repetition alone** (openings, sentence lengths, repeated phrases) need two such families to stamp: each matched 2–5% of pre-ChatGPT human answers on its own.
+- **Short samples** (fewer than 20 words or 2 sentences) stamp only on a strong artifact.
 - **Hover:** details grow out from the stamp, showing the matched families and highlighted passages. Moving into the panel keeps it open.
 - **Click, tap, Enter, or Space:** keep details open for reading and interaction. Escape closes them and returns focus. Reduced-motion settings disable the grow animation.
 
-The level counts matched pattern families, not the probability that AI wrote the post. These families are not equally predictive or statistically independent. Human writing can match them; AI writing can match none. The details explain this and show the exact count, sample length, and exclusions. **Short sample** is reported in details and the accessible name for fewer than 20 words or 2 sentences/list items. The original post is never highlighted or rewritten.
+The level reflects fixed evidence points, not the probability that AI wrote the post. Human writing can match these patterns; AI writing can match none. The details show each matched family with its tier, the point total, highlighted passages, sample length, and exclusions. **Short sample** is reported in details and the accessible name. The original post is never highlighted or rewritten.
 
-The six families are model references or recognizable assistant artifacts, stock framing phrases, repeated sentence openings, list and punctuation structure, similar sentence lengths, and repeated phrases. Multiple matches in a family count once. Lists are excluded from the three prose rhythm/repetition checks and from the new contrast-construction check; counted openings are excluded from phrase repetition.
+Multiple matches in a family count once. Lists are excluded from the prose rhythm, repetition and contrast checks; counted openings are excluded from phrase repetition. On a set of pre-ChatGPT human answers, 0.10 stamps 0.4–0.7% of posts, down from 9.6–13.4% in 0.9.1; see the [0.10 accuracy validation](docs/accuracy-validation.md).
 
 The **Style cue settings** button remains available when every badge is hidden. Settings are stored locally for the current site/origin:
 
@@ -74,14 +84,18 @@ See [SECURITY.md](SECURITY.md) for the privacy boundary and reporting guidance.
 
 The browser preserves paragraph, line-break, and list boundaries while extracting the author's text. It excludes quotation blocks, quoted reposts where identified by the site adapter, code, and inline quotation/code spans. One deterministic sentence parser supplies both the cue checks and diagnostic metrics, including handling of common abbreviations, decimals, and URLs.
 
-The default rules look for exact, inspectable patterns:
+The default rules look for exact, inspectable patterns. Sources include Wikipedia's [Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing), [Kobak et al. 2025](https://arxiv.org/abs/2406.07016), [Reinhart et al. 2025](https://arxiv.org/html/2410.16107v2) and [slop-score](https://github.com/sam-paech/slop-score) (MIT; see [third-party notices](THIRD_PARTY_NOTICES.md)):
 
-- explicit model-reference wording, excluding ordinary refusals and AI job titles; specific assistant-role delimiters and leaked citation markup
-- combinations of stock framing phrases, including common contemporary variants; repeated contrast constructions require at least two matches and 40 prose words
-- repeated multiword sentence openings, including longer repeated openings that begin with function words
-- bullet, arrow, checkmark, and numbered lists or punctuation clusters, with punctuation density adjusted for text length
-- similar prose sentence lengths with minimum sample requirements
-- contiguous repeated 3–5-word phrases, with overlapping spans counted once and repetition measured relative to prose length
+- explicit model-reference, knowledge-cutoff and capability wording, excluding ordinary refusals and AI job titles
+- unedited assistant output: openers, "here's a revised version:" delivery lines, sign-offs and Title Case placeholders; ironic `[insert joke here]` and Markdown link titles do not count
+- assistant markup: role tokens, `oaicite`/`contentReference` and other citation remnants, and literal Markdown headings, bold lines or links on sites that do not render Markdown
+- AI-assistant tracking parameters in linked URLs, read from link targets and through Facebook/YouTube redirect wrappers
+- stock framing phrases scaled with length (two distinct phrases per 120 prose words); phrases as common in human answers as in ChatGPT output count only in threes, and `TL;DR` and "if you're" are ignored; inflection-aware promotional terms
+- "not X, but Y" and "it isn't X. It's Y" pivots, ported from slop-score's surface regexes; ordinary in-sentence hedges count half
+- several distinct LLM-overused words, and copula avoidance or trailing "-ing" clauses
+- repeated multiword sentence openings (three repeats, or two sharing four words)
+- bullet, arrow, checkmark, emoji, keycap and numbered lists or punctuation clusters; clock times and numeric ranges are not punctuation clusters
+- similar prose sentence lengths, and contiguous repeated 3–5-word phrases measured relative to prose length
 
 Unicode is normalized and invisible formatting characters are removed before analysis. The language check uses script and English function-word evidence; it is a conservative eligibility heuristic, not a language classifier.
 
@@ -91,7 +105,9 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 
 ## Accuracy policy
 
-The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. For eligible text it returns an exact family count and shows contributing cues when any match. Unsupported or uncertain language is skipped, and zero-match posts have no badge. It makes no accuracy or probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. Every rule, point value and threshold is hand-written and runs inside the userscript; nothing is trained. Unsupported or uncertain language is skipped, and posts below the stamp threshold have no badge. It makes no probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
+
+Version 0.10 measures the rubric on labeled text with `scripts/evaluate_rubric.mjs` and tunes cut-offs by hand against false-positive rates. On HC3's pre-ChatGPT human answers it stamps 0.4% (Reddit ELI5) and 0.7% (held-out finance), against 9.6% and 13.4% for 0.9.1; ChatGPT recall on the same December 2022 output is 23–26%, down from 69%. HC3 cannot measure current-model vocabulary, contrast, list or Markdown cues. ZipPy compression, Biber-style grammar rates and slop-score lists were measured but not shipped. See the [0.10 accuracy validation](docs/accuracy-validation.md).
 
 Version 0.9 adds two rule-only checks from the [browser detection research](docs/research/2026-10-28-browser-ai-text-detection.md): recognizable assistant artifacts and repeated contrast constructions. No model training, inference runtime, new runtime dependency, or network service is needed. Diagnostic feature definitions and model weights are unchanged. The [stamp validation report](docs/stamp-validation.md) records the chosen rules and their limits.
 

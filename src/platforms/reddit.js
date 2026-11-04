@@ -63,6 +63,7 @@ function createPlatformAdapter() {
       return {
         text: title.text + '\n' + body.text,
         host: body.host,
+        links: [...(title.links || []), ...(body.links || [])],
         excluded: { quotes: title.excluded.quotes + body.excluded.quotes, code: title.excluded.code + body.excluded.code }
       };
     }
@@ -72,6 +73,8 @@ function createPlatformAdapter() {
   return {
     id: 'reddit',
     name: 'Reddit',
+    // Reddit renders Markdown, so literal **bold** is not a chatbot-paste artifact here.
+    rendersMarkdown: true,
     postSelector,
     commentSelector,
     isTopLevel(element, kind) {

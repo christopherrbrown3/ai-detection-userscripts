@@ -30,6 +30,11 @@ class FeatureParityTests(unittest.TestCase):
             {"kind": "post", "text": "I’m an AI assistant, and I can help you."},
             {"kind": "post", "text": 'The quote "as an AI" is excluded; `I am an AI` is code.'},
             {"kind": "post", "text": "→ We inspect the gate.\n✓ We inspect the door.\n✅ We inspect the roof."},
+            {"kind": "post", "text": "Lessons:\n🚀 Hire for attitude.\n💡 Talk to customers.\n1️⃣ Ship small.\n⭐ Learn fast."},
+            {
+                "kind": "comment",
+                "text": "We met at 9 a.m. at Acme Inc. on Main St. and spent approx. 20 min. on No. 5. It went fine. Then we left at 10 a.m. Lunch was next.",
+            },
             {"kind": "comment", "text": ""},
             {
                 "kind": "post",
