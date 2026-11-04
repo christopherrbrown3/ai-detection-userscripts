@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## 0.10.0 - 2026-11-04
+
+- Score evidence with fixed, documented points instead of counting families: strong artifacts 3, patterns 1, formatting 0.5 only alongside another family. Moderate stamps start at 1 point and high at 3; high without an artifact needs both word-choice and structure evidence. Rhythm and repetition alone need two families, and short samples stamp only on strong artifacts.
+- Add strong-artifact checks: knowledge-cutoff and capability disclaimers, assistant openers, delivery lines and sign-offs, Title Case placeholders such as `[Your Name]`, `oaicite`/`contentReference` and other citation remnants, and literal Markdown on sites that do not render it (adapters may declare `rendersMarkdown`; Reddit does).
+- Read author-owned link targets and flag AI-assistant tracking parameters (`utm_source=chatgpt.com`, `openai`, `copilot.com`, `referrer=grok.com`), including through Facebook and YouTube redirect wrappers. This is a pattern, not a strong artifact: it shows tool use, not authorship.
+- Add pattern families for repeated "not X, but Y" pivots (surface regexes ported from slop-score, MIT), LLM-overused vocabulary (several distinct words required), and copula avoidance or trailing "-ing" clauses. Match promotional terms by inflection.
+- Reduce false positives found on pre-ChatGPT human answers: scale stock framing with length, count common phrases only in threes and ignore `TL;DR` and "if you're"; require three repeated openings (or two sharing four words); ignore clock times and numeric ranges in punctuation clusters; treat lists as formatting evidence.
+- Recognize emoji and keycap bullets as list items (mirrored in the Python features). Keep conditional abbreviations such as `a.m.`, `Inc.` and `No. 5` inside sentences. Count English contractions as language evidence so punchy, contraction-heavy text is assessed.
+- Add a chatbot social-post register family ("Hey fellow Redditors", "any advice would be greatly appreciated", "thanks in advance"; two distinct phrases), mined on half of RAID's Reddit posts and checked on the other half. Add a creator-post template cue (hook line, one-line paragraphs, bullets, engagement prompt or hashtag block) and let contrast pivots match one-sentence-per-line posts.
+- Add a per-site **Stamp sensitivity** setting. Strict shows only AI Detected; Balanced (default) adds a grey dashed **Possible AI** stamp for evidence below the moderate threshold; Sensitive lowers cut-offs and counts the creator-post template. The legacy diagnostic `sensitivity` setting is untouched.
+- Add `scripts/evaluate_rubric.mjs`, `scripts/prepare_hc3.py`, `scripts/sample_raid_reddit.py` and `research/` signals. On held-out RAID Reddit posts, AI Detected catches 46% of chat-model posts and 1.1% of human posts (0.9.1: 16.6% and 7.3%); Sensitive reaches 79% at 17%. On HC3, Strict stamps 0.4–0.7% of human answers. ZipPy compression (AUC 0.95, strongly length-dependent), Biber-style rates and slop lists were measured but not shipped. See [accuracy validation](docs/accuracy-validation.md).
+- Cue analysis version `browser-cues-v6`. The diagnostic feature set is now `stylometry-v5-charhash128`, because the list-marker and abbreviation changes alter `listMarkerCount` and the sentence-length features; previously trained weights must be retrained. The hand-tuned diagnostic weights and existing settings keys are unchanged. Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## 0.8.0 - 2026-10-27
 
 - Recognize more stock-framing variants, three repeated function-word openings, and arrow/checkmark list markers. Keep combined-phrase thresholds, short-sample warnings, quote/code exclusions, and list/prose separation.

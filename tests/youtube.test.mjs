@@ -167,12 +167,13 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     assert.equal(badge.textContent,'AI Detected');
     assert.match(badge.getAttribute('aria-label'), /Short sample/);
     assert.equal(badge.querySelector('.ai-heuristic-meter'),null);
-    assert.match(badge.getAttribute('aria-label'),/1 of 6 cue families/);
+    // Short samples stamp only on definitive artifacts, which score high.
+    assert.match(badge.getAttribute('aria-label'),/high signal level\. 1 of 15 pattern families matched, 3 points/);
     const unknown=window.document.querySelector('#unknown .ai-heuristic-badge');
     assert.equal(unknown,null);
     badge.click();const details=window.document.querySelector('details');details.open=true;
     await until(()=>details.textContent.includes('Diagnostic model: unavailable for this platform'));
-    assert.match(window.document.querySelector('.ai-heuristic-popover').textContent,/1\/6 cues/);
+    assert.match(window.document.querySelector('.ai-heuristic-popover').textContent,/3 points · 1 pattern/);
   });
 });
 

@@ -6,7 +6,7 @@ afterEach(closeDoms);
 const ordinary = 'I fixed the gate after work yesterday. The hinge needs oil but the latch still closes with a gentle push.';
 const moderate = 'Here are the key takeaways from this week. In conclusion, we need to check the new release with the support team before we ship it to everyone.';
 const high = moderate + '\n- Check the first item\n- Check the second item\n- Check the third item\nAs an AI, I can help with your question.';
-const contrast = 'We need not another enormous dashboard, but a clear explanation of what happened when the server stopped responding to requests. Our goal is not just a much faster launch, but a careful release that we can support for the next several years.';
+const contrast = 'We need not just another enormous dashboard, but a clear explanation of what happened when the server stopped responding to requests. Our goal is not just a much faster launch, but a careful release that we can support for the next several years.';
 const engine = loadEngine('x');
 const families = text => engine.analyze(text, {kind:'post'}).cueAssessment.families;
 const tweet = (id, text) => `<article role="article" id="${id}"><div data-testid="User-Name">Example</div><div data-testid="tweetText" style="white-space:pre-wrap;font-size:18px;line-height:27px">${text}</div></article>`;
@@ -22,33 +22,38 @@ function pointer(window, node, type, pointerType = 'mouse') {
   node.dispatchEvent(event);
 }
 
-test('repeated contrast adds one framing family with exact spans; a single contrast does not', () => {
+test('repeated contrast pivots form one family with exact spans; a single contrast or hedges do not', () => {
   const matches = families(contrast);
   assert.equal(matches.length, 1);
-  assert.equal(matches[0].id, 'formulaic-framing');
-  assert.match(matches[0].detail, /2 repeated contrast constructions/);
+  assert.equal(matches[0].id, 'contrast-framing');
+  assert.equal(matches[0].tier, 'moderate');
+  assert.match(matches[0].detail, /^2 "not X, but Y"/);
   assert.equal(matches[0].spans.length, 2);
   for (const span of matches[0].spans) assert.match(contrast.slice(span.start, span.end), /not.*but/);
   assert.equal(families(contrast.split('. ')[0] + '. ' + ordinary).length, 0);
   assert.equal(families('“' + contrast + '” ' + ordinary).length, 0);
   assert.equal(families('`' + contrast + '` ' + ordinary).length, 0);
-  assert.equal(families('- ' + contrast.replace('. Our', '.\n- Our')).some(f => f.id === 'formulaic-framing'), false);
-  assert.equal(families(moderate + ' ' + contrast).filter(f => f.id === 'formulaic-framing').length, 1);
+  assert.equal(families('- ' + contrast.replace('. Our', '.\n- Our')).some(f => f.id === 'contrast-framing'), false);
+  assert.equal(families(moderate + ' ' + contrast).filter(f => f.id === 'contrast-framing').length, 1);
+  // Ordinary in-sentence hedges count half: two of them are not enough.
+  const hedges = "I'm not a physicist, but after reading about it the answer seems simple enough to me. It is not a big deal for most sequels, but this one cost far more than the studio expected to spend.";
+  assert.equal(families(hedges).some(f => f.id === 'contrast-framing'), false);
 });
 
 test('paired contrasts preserve curly apostrophe offsets and require repeated constructions', () => {
   const text = 'It isn’t a magical shortcut to success. It is a careful process that we need to repeat each week. This isn’t a race to ship everything today. This is a chance to check whether the changes solve the actual problem for the people using them.';
-  const framing = families(text).find(f => f.id === 'formulaic-framing');
+  const framing = families(text).find(f => f.id === 'contrast-framing');
   assert.ok(framing);
-  assert.match(framing.detail, /2 repeated contrast constructions/);
+  assert.match(framing.detail, /^2 "not X, but Y"/);
   assert.match(text.slice(framing.spans[0].start, framing.spans[0].end), /^It isn’t/);
 });
 
 test('assistant artifacts require specific role/citation syntax and ignore quoted or code examples', () => {
   for (const artifact of ['<|im_start|>assistant', '<|start_header_id|>assistant<|end_header_id|>', '<|start|>assistant<|message|>', '\uE200cite\uE202turn0search0\uE201']) {
     const text = ordinary + ' ' + artifact;
-    const reference = families(text).find(f => f.id === 'self-disclosure');
+    const reference = families(text).find(f => f.id === 'markup-artifacts');
     assert.ok(reference, artifact);
+    assert.equal(reference.tier, 'definitive');
     assert.equal(text.slice(reference.spans[0].start, reference.spans[0].end), artifact);
     assert.equal(families(ordinary + ' “' + artifact + '”').length, 0);
     assert.equal(families(ordinary + ' `' + artifact + '`').length, 0);
@@ -69,8 +74,8 @@ for (const distribution of ['source', 'combined', 'targeted']) {
     assert.equal(badges.length, 2);
     assert.deepEqual(badges.map(b => b.dataset.cueTone), ['moderate', 'high']);
     assert.deepEqual(badges.map(b => b.textContent), ['AI Detected', 'AI Detected']);
-    assert.match(badges[0].getAttribute('aria-label'), /1 of 6 cue families/);
-    assert.match(badges[1].getAttribute('aria-label'), /3 of 6 cue families/);
+    assert.match(badges[0].getAttribute('aria-label'), /moderate signal level\. 1 of 15 pattern families matched, 1 point\./);
+    assert.match(badges[1].getAttribute('aria-label'), /high signal level\. 3 of 15 pattern families matched, 4\.5 points/);
     assert.equal(badges[0].style.getPropertyValue('--aih-post-line-height'), '27px');
     assert.equal(badges[0].style.getPropertyValue('--aih-post-font-size'), '18px');
     assert.ok(window.__controller.getAnalysis(window.document.getElementById('none')));

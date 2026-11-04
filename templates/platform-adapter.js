@@ -14,6 +14,9 @@ function createPlatformAdapter() {
     postSelector,
     commentSelector,
     observedAttributes: ['data-revision'],
+    // Optional: true when the site renders Markdown (e.g. Reddit). Otherwise
+    // literal **bold**/# headings count as chatbot-paste artifacts.
+    rendersMarkdown: false,
     // Optional: return false on routes that the registry cannot express.
     supportsUrl(url) { return url.pathname !== '/unsupported'; },
     isTopLevel(element, kind) {
@@ -26,7 +29,8 @@ function createPlatformAdapter() {
       if (!body || !host) return null; // Skip unknown layouts; never scrape the full page.
       // Identify platform-specific quoted/reposted cards before reading text.
       // This helper already preserves lists/lines and excludes standard quotes,
-      // code, controls, composers, and our own UI. Do not mutate the site's text.
+      // code, controls, composers, and our own UI, and returns author-owned link
+      // hrefs as `links`. Do not mutate the site's text.
       return { ...aiHeuristicReadContent(body), host, textHost: body };
     },
     placeBadge(element, badge, kind, content) {

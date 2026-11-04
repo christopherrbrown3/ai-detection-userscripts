@@ -15,6 +15,10 @@ Do not combine unrelated human and AI corpora without matching topic, prompt, le
 
 MultiSocial's Zenodo files are restricted to approved research use. Request access and follow its terms; never commit or redistribute the corpus from this repository.
 
+## Measuring the shipped rubric
+
+`scripts/evaluate_rubric.mjs` runs the shipped cue rules (and, with `--baseline-ref`, any earlier commit) over labeled JSONL and reports stamp and per-family rates with Wilson 95% intervals. It fits nothing. Text published before 30 Nov 2022 is a human-only control set, so false-positive rates can be measured without AI labels. `scripts/prepare_hc3.py` converts HC3 and `scripts/sample_raid_reddit.py` samples RAID's Reddit posts for this; `--sensitivity` picks the stamp profile. Results are in [accuracy validation](accuracy-validation.md).
+
 ## Required split design
 
 Use three disjoint splits:

@@ -200,7 +200,7 @@ test('badges open a keyboard-accessible dialog with settings', () => {
   const analysis = __controller.getAnalysis(article);
   assert.equal(badge.querySelector('.ai-heuristic-badge__text').textContent, 'AI Detected');
   assert.doesNotMatch(badge.textContent, /\/100|%/);
-  assert.match(badge.getAttribute('aria-label'), /1 of 6 cue families matched.*not proof of authorship/);
+  assert.match(badge.getAttribute('aria-label'), /1 of 15 pattern families matched, 1 point.*not proof of authorship/);
   assert.equal(badge.title, '', 'custom hover panel replaces native tooltip');
   badge.click();
   const dialog = document.querySelector('[role="dialog"]');
@@ -232,12 +232,13 @@ test('stamp describes matched evidence and unassessed text stays unbadged', () =
   assert.equal(cues.families.length, 1);
   const badge = post.querySelector('.ai-heuristic-badge');
   assert.equal(badge.querySelector('.ai-heuristic-badge__text').textContent, 'AI Detected');
-  assert.match(badge.getAttribute('aria-label'), /1 of 6 cue families matched.*not proof of authorship/);
+  assert.match(badge.getAttribute('aria-label'), /1 of 15 pattern families matched, 1 point.*not proof of authorship/);
   assert.equal(badge.querySelector('.ai-heuristic-meter'), null);
   assert.equal(badge.dataset.cueTone, 'moderate');
   badge.click();
   const dialog = document.querySelector('[role="dialog"]');
-  assert.match(dialog.textContent, /1\/6 cues.*1 of 6 pattern families matched/);
+  assert.match(dialog.textContent, /1 point · 1 pattern.*1 of 15 pattern families matched \(1 point\)/);
+  assert.match(dialog.textContent, /Pattern · 1 point/);
   assert.match(dialog.textContent, /Repeated matches within one family count once/);
   assert.match(dialog.textContent, /not proof of AI authorship/);
   assert.doesNotMatch(dialog.textContent, /\/100|rounded to 0–100/);

@@ -1,7 +1,10 @@
 function aiHeuristicReadContent(node, options = {}) {
   const excluded = { quotes: 0, code: 0 };
-  if (!node) return { text: '', excluded };
+  if (!node) return { text: '', excluded, links: [] };
   const parts = [];
+  // Link targets of author-owned text only (quotes/code/UI are skipped
+  // below). The detector reads AI-assistant tracking parameters from them.
+  const links = [];
   const blocks = new Set(['DIV', 'P', 'LI', 'UL', 'OL', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
   const preserveLines = /pre|break-spaces/.test(window.getComputedStyle(node).whiteSpace);
   function visit(current, preserve, inList = false) {
@@ -23,6 +26,12 @@ function aiHeuristicReadContent(node, options = {}) {
       return;
     }
     if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
+    if (current.tagName === 'A' && links.length < 20) {
+      const href = current.getAttribute('href');
+      // The anchor text lets the detector drop links inside inline quotation marks.
+      const text = (current.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (href && !links.some((link) => link.href === href && link.text === text)) links.push({ href, text });
+    }
     const block = blocks.has(current.tagName);
     // A list item's own paragraphs stay on its marked line. Nested lists
     // retain separate item boundaries so prose checks cannot reuse list text.
@@ -37,7 +46,7 @@ function aiHeuristicReadContent(node, options = {}) {
   visit(node, preserveLines);
   const text = parts.join('').replace(/\u00a0/g, ' ').replace(/[^\S\n]+/g, ' ')
     .replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { text, excluded };
+  return { text, excluded, links };
 }
 
 function aiHeuristicTextContent(node) {
@@ -96,6 +105,9 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   const defaults = {
     enabled: options.enabledByDefault !== false,
     sensitivity: 'balanced',
+    // Stamp sensitivity (0.10): strict | balanced | sensitive. Separate from
+    // the legacy diagnostic-model `sensitivity`, which older settings may hold.
+    cueSensitivity: 'balanced',
     analyzeComments: true,
     hideInsufficient: false,
     hideLow: false
@@ -164,6 +176,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-width: 3px;
       padding: 0 4px;
     }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+      --aih-accent: #4b5563;
+      --aih-stamp-bg: #f5f6f8;
+      border-style: dashed;
+      font-weight: 700;
+    }
     button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
       margin-inline-start: 6px;
       max-width: calc(100% - 6px);
@@ -191,6 +209,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #984000; }
     .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #b01e29; }
+    .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #4b5563; }
     .ai-heuristic-popover[data-entry="stamp"] {
       animation: aih-stamp-grow 180ms cubic-bezier(.16, 1, .3, 1) both;
     }
@@ -212,6 +231,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     .ai-heuristic-popover .ai-heuristic-cues > li { margin: 0; padding: 10px 0; }
     .ai-heuristic-popover .ai-heuristic-cues > li + li { border-top: 1px solid var(--aih-border); }
     .ai-heuristic-popover .ai-heuristic-cue-detail { color: var(--aih-muted); margin: 4px 0 6px; }
+    .ai-heuristic-popover .ai-heuristic-cue-tier { display: block; color: var(--aih-muted); font-size: .85em; margin-top: 2px; }
     .ai-heuristic-popover .ai-heuristic-cue-example { background: var(--aih-panel); border-radius: 6px; color: var(--aih-text); overflow-wrap: anywhere; white-space: pre-wrap; margin: 6px 0; padding: 8px 10px; font-size: 12px; }
     .ai-heuristic-cue-example mark { background: #dbeafe; color: #172554; border-radius: 2px; padding: 1px 0; }
     .ai-heuristic-popover ::selection { background: #bfdbfe; color: #172554; }
@@ -372,6 +392,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       color: var(--aih-text);
       font: inherit;
       padding: 5px 7px;
+      max-width: 62%;
+      min-width: 0;
     }
     .ai-heuristic-popover .ai-heuristic-popover__footer {
       color: var(--aih-muted);
@@ -392,8 +414,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-accent: #ff929a;
         --aih-stamp-bg: #321d22;
       }
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+        --aih-accent: #c3cad6;
+        --aih-stamp-bg: #232833;
+      }
       .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #ffb36b; }
       .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #ff929a; }
+      .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #c3cad6; }
       .ai-heuristic-popover {
         --aih-bg: #151a24;
         --aih-panel: #202735;
@@ -419,6 +446,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (typeof result[key] !== 'boolean') result[key] = defaults[key];
     }
     if (!['balanced', 'conservative', 'aggressive'].includes(result.sensitivity)) result.sensitivity = defaults.sensitivity;
+    if (!['strict', 'balanced', 'sensitive'].includes(result.cueSensitivity)) result.cueSensitivity = defaults.cueSensitivity;
     return result;
   }
 
@@ -501,12 +529,47 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    return analysis.cueAssessment.families.length >= 3 ? 'high' : 'moderate';
+    const stamp = analysis.cueAssessment.stamp;
+    return stamp === 'high' ? 'high' : stamp === 'low' ? 'low' : 'moderate';
+  }
+
+  function stampLabel(analysis) {
+    return cueTone(analysis) === 'low' ? 'Possible AI' : 'AI Detected';
+  }
+
+  // Describes the scoring rules of the profile that produced this analysis.
+  function sensitivityExplanation(profile) {
+    const option = SENSITIVITY_OPTIONS.find(([value]) => value === profile) || SENSITIVITY_OPTIONS[1];
+    const sensitive = option[0] === 'sensitive';
+    return 'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1. ' +
+      'Moderate starts at 1 point and high at 3. Repeated matches within one family count once. ' +
+      (sensitive
+        ? 'In Sensitive mode cut-offs are lower: formatting counts 0.5 on its own, one rhythm, repetition or register cue can stamp, and short samples can stamp. '
+        : 'Formatting counts 0.5 only alongside another pattern, and rhythm or repetition alone needs two patterns. ') +
+      (option[0] === 'strict' ? 'Strict mode hides weaker evidence. ' : 'Possible AI means some evidence matched, but less than a moderate stamp needs. ') +
+      'Sensitivity: ' + option[1] + '.';
+  }
+
+  const SENSITIVITY_OPTIONS = [
+    ['strict', 'Strict: strong evidence only'],
+    ['balanced', 'Balanced: also show Possible AI'],
+    ['sensitive', 'Sensitive: lower cut-offs, more false flags']
+  ];
+
+  function formatPoints(points) {
+    const value = Number.isFinite(points) ? points : 0;
+    return (Number.isInteger(value) ? String(value) : value.toFixed(1)) + (value === 1 ? ' point' : ' points');
   }
 
   function cueCount(cues) {
-    return cues.families.length + '/' + cues.totalFamilies + ' cues';
+    return formatPoints(cues.points) + ' · ' + cues.families.length + (cues.families.length === 1 ? ' pattern' : ' patterns');
   }
+
+  const TIER_LABELS = {
+    definitive: 'Strong artifact · 3 points',
+    moderate: 'Pattern · 1 point',
+    supporting: 'Formatting · 0.5 points with another pattern'
+  };
 
   function cancelPopoverClose() {
     if (popoverCloseTimer !== null) window.clearTimeout(popoverCloseTimer);
@@ -533,9 +596,9 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
-    badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
-      cues.families.length + ' of ' + cues.totalFamilies + ' cue families matched. ' +
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', stampLabel(analysis)));
+    badge.setAttribute('aria-label', stampLabel(analysis) + ': ' + cueTone(analysis) + ' signal level. ' +
+      cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched, ' + formatPoints(cues.points) + '. ' +
       cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
     badge.addEventListener('pointerenter', (event) => {
       if (event.pointerType === 'touch') return;
@@ -601,7 +664,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     } else {
       const cues = analysis.cueAssessment;
       lines.splice(2, 0,
-        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families`,
+        `Cue rubric: ${cues.families.length}/${cues.totalFamilies} families; ${formatPoints(cues.points)}; stamp ${cues.stamp || 'none'}`,
+        `Families: ${cues.families.map((family) => family.id + ' (' + family.tier + ')').join(', ') || 'none'}`,
         `Sample class: ${cues.coverage.text} (${cues.coverage.reason})`,
         analysis.modelAvailable === false ? 'Diagnostic model: unavailable for this platform' :
           `Legacy model output: ${analysis.signal.toFixed(4)} (diagnostic only; not used for the badge)`
@@ -629,6 +693,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       label.appendChild(input);
       controls.appendChild(label);
     }
+    const sensitivityLabel = createElement('label', '', 'Stamp sensitivity');
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Stamp sensitivity');
+    for (const [value, text] of SENSITIVITY_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      option.selected = settings.cueSensitivity === value;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => saveSettings({ cueSensitivity: select.value }));
+    sensitivityLabel.appendChild(select);
+    controls.appendChild(sensitivityLabel);
     section.appendChild(controls);
     return section;
   }
@@ -705,7 +782,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'AI Detected');
+    const title = createElement('h2', '', stampLabel(analysis));
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -720,17 +797,17 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
+      ({ high: 'High', moderate: 'Moderate', low: 'Low' })[cueTone(analysis)] + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
-        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched. Moderate means 1–2 families; high means 3 or more. ' +
-        'Repeated matches within one family count once.'));
+        cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
+        sensitivityExplanation(cues.sensitivity || settings.cueSensitivity)));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
     body.appendChild(createElement('p', 'ai-heuristic-popover__notice',
       'These are writing-pattern matches, not proof of AI authorship. Human writing can match them; AI writing can match none. ' +
-      'The level counts patterns, not the probability that AI wrote this text.'));
+      'The level adds fixed points per pattern; it is not the probability that AI wrote this text.'));
 
     const cueSection = createElement('section', 'ai-heuristic-popover__section');
     cueSection.appendChild(createElement('h3', '', 'Observed patterns'));
@@ -743,6 +820,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       for (const family of cues.families) {
         const item = document.createElement('li');
         item.appendChild(createElement('strong', '', family.name));
+        if (TIER_LABELS[family.tier]) item.appendChild(createElement('span', 'ai-heuristic-cue-tier', TIER_LABELS[family.tier]));
         item.appendChild(createElement('p', 'ai-heuristic-cue-detail', family.detail));
         appendCueExamples(item, analysis.sourceText, family.spans);
         list.appendChild(item);
@@ -821,7 +899,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
   function shouldHide(analysis) {
     const cues = analysis.cueAssessment;
-    return !cues.assessed || !cues.families.length || (settings.hideInsufficient && cues.coverage.level === 'short');
+    const stamp = typeof cues.stamp === 'string' ? cues.stamp : cues.families.length ? 'moderate' : 'none';
+    return !cues.assessed || stamp === 'none' || (settings.hideInsufficient && cues.coverage.level === 'short');
   }
 
   function sizeStamp(badge, host) {
@@ -880,7 +959,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       records.delete(element);
       return;
     }
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + text;
+    const links = (Array.isArray(content.links) ? content.links : []).map((link) => typeof link === 'string' ? { href: link, text: '' } :
+      link && typeof link.href === 'string' ? { href: link.href, text: typeof link.text === 'string' ? link.text : '' } : null)
+      .filter(Boolean).slice(0, 20);
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' +
+      links.map((link) => link.href + '\t' + link.text).join('\n') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
@@ -897,7 +980,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     let analysis = analysisCache.get(cacheKey);
     if (!analysis) {
-      analysis = engine.analyze(text, { kind, excluded }, settings);
+      analysis = engine.analyze(text, { kind, excluded, links, rendersMarkdown: adapter.rendersMarkdown === true }, settings);
       analysisCache.set(cacheKey, analysis);
       if (analysisCache.size > 128) analysisCache.delete(analysisCache.keys().next().value);
     }
@@ -1174,7 +1257,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
-      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', ...(adapter.observedAttributes || [])])]
+      // href is observed because AI-referral links are read from link targets.
+      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', 'href', ...(adapter.observedAttributes || [])])]
     });
   }
 

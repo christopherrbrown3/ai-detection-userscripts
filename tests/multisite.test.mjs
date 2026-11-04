@@ -43,7 +43,12 @@ for (const distribution of ['combined', 'targeted']) {
       const {window} = loadGeneratedDom(site, loadFixture(site + '.html'), expected.url, {distribution});
       for (const [id, value] of Object.entries(expected.posts)) {
         const a = window.__controller.getAnalysis(window.document.getElementById(id));
-        assert.deepEqual(plain({sourceText:a.sourceText, excluded:a.excluded, cues:a.cueAssessment, metrics:a.metrics}), value);
+        // Extraction and metrics must match v0.4 exactly. Cue results compare by
+        // meaning: 0.10 added fixed-point scoring fields and more families.
+        const cues = (c) => ({level: c.level, text: c.text, assessed: c.assessed, coverage: c.coverage,
+          families: c.families.map((f) => ({id: f.id, spans: f.spans}))});
+        assert.deepEqual(plain({sourceText:a.sourceText, excluded:a.excluded, cues:cues(a.cueAssessment), metrics:a.metrics}),
+          {...value, cues: cues(value.cues)});
       }
     });
   }

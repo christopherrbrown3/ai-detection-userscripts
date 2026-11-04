@@ -10,7 +10,9 @@ One installation runs one site adapter. The combined artifact includes the share
 | `src/bootstrap.js` | HTTPS/top-frame dispatch, adapter validation, duplicate coordination, controller ownership |
 | `src/platforms/*.js` | Site-specific candidate ownership, text extraction, post/reply classification, badge placement |
 | `src/runtime.js` | Structural extraction helpers, scheduling, cache, settings, accessible UI, lifecycle and cleanup |
-| `src/detector.js` | Shared normalization, cue semantics, spans, language/sample states, diagnostic model selection |
+| `src/detector.js` | Shared normalization, cue semantics, fixed-point tiers and stamp decision, spans, language/sample states, diagnostic model selection |
+| `research/` | Measured-but-unshipped signals (ZipPy compression, Biber-style rates, slop lists); never bundled |
+| `scripts/evaluate_rubric.mjs` | Rule measurement on labeled JSONL with Wilson intervals; nothing is fitted |
 | `models/default-models.json` | Diagnostic models, thresholds, feature-schema metadata |
 | `scripts/build_userscripts.py` | Deterministic distributions, metadata and supported-site documentation |
 | `package.json` | Product version, checked against both lockfile version fields |
@@ -47,9 +49,10 @@ The JSDoc contract lives in `src/bootstrap.js`. A factory must be side-effect-fr
 - `id`, `name`, `postSelector`, `commentSelector`: stable identity and valid nonempty selectors.
 - Optional `kindForElement(element)`: returns `post` or `comment`. Without it, matching `commentSelector` determines comment status.
 - `isTopLevel(element, kind)`: establishes ownership, avoiding nested quoted-post duplication while permitting independently owned replies.
-- `extractContent(element, kind)`: returns `{text, excluded: {quotes, code}, host?, textHost?}` with author-owned text, nonnegative integer exclusion counts, and an optional placement hint. The runtime reads `textHost || host || element` for stamp typography; return `textHost` when the placement wrapper differs from the actual author text element. Preserve structural boundaries with `aiHeuristicReadContent`. Its optional second argument `{quoteSelector}` marks additional descendant boundaries as quotations without modifying the source DOM; it never excludes the reader's root itself. Null/empty content removes an old badge; material consisting solely of exclusions remains unassessed and receives no stamp.
+- `extractContent(element, kind)`: returns `{text, excluded: {quotes, code}, links?, host?, textHost?}` with author-owned text, nonnegative integer exclusion counts, optional author-owned links as `{href, text}` objects or plain href strings (at most 20 are read; `aiHeuristicReadContent` collects them and skips links in quote/code elements, and the detector drops a link whose anchor text appears only inside inline quotation marks or backticks), and an optional placement hint. The runtime reads `textHost || host || element` for stamp typography; return `textHost` when the placement wrapper differs from the actual author text element. Preserve structural boundaries with `aiHeuristicReadContent`. Its optional second argument `{quoteSelector}` marks additional descendant boundaries as quotations without modifying the source DOM; it never excludes the reader's root itself. Null/empty content removes an old badge; material consisting solely of exclusions remains unassessed and receives no stamp.
 - `placeBadge(element, badge, kind, content)`: attaches the provided badge beside the owned title/author, with an above-text fallback. It must be idempotent: cached rescans call it so late headers can receive an existing stamp without rescoring. Use `aiHeuristicPlaceHeaderBadge(element, badge, header, body)` to avoid nesting buttons in author/title links or rewriting source text. Never use a quoted card's or nested reply's header.
-- Optional `observedAttributes`: candidate-affecting attribute names in addition to `lang`, `class`, `role`, `data-testid`, and `slot`.
+- Optional `observedAttributes`: candidate-affecting attribute names in addition to `lang`, `class`, `role`, `data-testid`, `slot`, and `href` (observed so link-target edits re-analyze their post).
+- Optional `rendersMarkdown`: `true` when the site renders Markdown (Reddit). Otherwise literal `**bold**` lines, `#` headings and `[text](url)` links count as assistant-paste artifacts.
 - Optional `supportsUrl(URL)`: additional route eligibility, combined with registry exclusions.
 - Optional `navigationEvents: {start, finish}`: distinct document event names that bracket site navigation. The runtime clears analysis on start and rescans eligible content on finish. YouTube uses `yt-navigate-start` and `yt-navigate-finish`, with an additional video identity guard in extraction.
 
@@ -67,7 +70,7 @@ Disabling analysis or entering an excluded route removes badges, closes details,
 
 ## Settings and coexistence
 
-Settings retain `ai-heuristic:<platform-id>:settings:v2` in origin-local storage. Known fields are validated; unknown fields and legacy sensitivity survive writes. `enabled` is additive. Invalid or denied storage uses in-memory defaults. Origins remain independent, including X/Twitter aliases and Reddit subdomains.
+Settings retain `ai-heuristic:<platform-id>:settings:v2` in origin-local storage. Known fields are validated; unknown fields and legacy sensitivity survive writes. `cueSensitivity` (`strict`, `balanced` or `sensitive`; default `balanced`) selects the stamp profile and is part of the analysis cache key; it is separate from the legacy diagnostic-model `sensitivity` field. `enabled` is additive. Invalid or denied storage uses in-memory defaults. Origins remain independent, including X/Twitter aliases and Reddit subdomains.
 
 Facebook opts into manager storage because live Safari testing found that its page-storage key disappeared even after a successful write. The manager key appends `@<origin>` to the existing settings key. Startup waits for the asynchronous read before analyzing, imports surviving page preferences when the manager has none, and serializes writes so rapid checkbox changes cannot arrive out of order. A stopped runtime cannot be revived by a late read. Missing/denied APIs fall back to page/tab settings with an explicit persistence notice. Only preference objects are stored; post text and analyses are never persisted. Userscripts also scopes manager values by script filename, so updates preserve them, while switching Facebook distributions may require enabling the destination installation again.
 
