@@ -6,7 +6,7 @@ import { closeDoms, loadDom, loadEngine } from './helpers.mjs';
 
 afterEach(closeDoms);
 const linkedin = loadEngine('linkedin');
-const cues = (text, context = {}) => linkedin.analyze(text, { kind: 'post', ...context }).cueAssessment;
+const cues = (text, context = {}, sensitivity = 'strict') => linkedin.analyze(text, { kind: 'post', ...context }, { cueSensitivity: sensitivity }).cueAssessment;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const ids = (text, context) => cues(text, context).families.map((family) => family.id);
 const filler = ' We repaired the gate after work yesterday. The latch still closes with a gentle push, and the dog stayed inside all evening.';
@@ -15,12 +15,15 @@ test('hand-written probes keep their documented stamps and families', () => {
   const { probes } = JSON.parse(fs.readFileSync(new URL('./fixtures/rubric-probes.json', import.meta.url), 'utf8'));
   assert.ok(probes.length >= 20);
   for (const probe of probes) {
-    const result = cues(probe.text);
-    assert.equal(result.stamp, probe.stamp, probe.id);
-    assert.deepEqual(plain(result.families.map((family) => family.id)), probe.families, probe.id);
+    for (const [sensitivity, expected] of Object.entries(probe.stamps)) {
+      const result = cues(probe.text, {}, sensitivity);
+      assert.equal(result.stamp, expected, probe.id + ' / ' + sensitivity);
+      if (sensitivity === 'strict') assert.deepEqual(plain(result.families.map((family) => family.id)), probe.families, probe.id);
+    }
   }
   const human = probes.filter((probe) => probe.style === 'human-style');
-  assert.equal(human.filter((probe) => probe.stamp !== 'none').length, 1, 'only the documented weak-phrase probe stamps');
+  assert.equal(human.filter((probe) => probe.stamps.strict !== 'none').length, 1, 'only the documented weak-phrase probe stamps in strict');
+  assert.ok(human.every((probe) => probe.stamps.balanced !== 'moderate' || probe.stamps.strict === 'moderate'), 'balanced adds only Possible AI stamps');
 });
 
 test('fixed points: definitive 3, moderate 1, supporting 0.5 only alongside another family', () => {
@@ -44,6 +47,10 @@ test('structure-only evidence needs two families; high without an artifact needs
   assert.equal(single.families.filter((family) => family.tier !== 'supporting').length, 1);
   assert.equal(single.stamp, 'none');
   assert.equal(single.level, 'cue-weak');
+  // Balanced shows it as Possible AI; sensitive lets one structure family stamp.
+  assert.equal(cues(uniform, {}, 'balanced').stamp, 'low');
+  assert.equal(cues(uniform, {}, 'balanced').level, 'cue-low');
+  assert.equal(cues(uniform, {}, 'sensitive').stamp, 'moderate');
   // Three word-choice families reach 3 points but stay moderate without structure evidence.
   const wordy = 'In conclusion, it is important to remember that this vibrant, multifaceted tapestry serves as a testament to pivotal growth. ' +
     'Overall, the meticulous team plays a crucial role, highlighting how innovation thrives across the realm of modern work every single day.';
@@ -57,6 +64,8 @@ test('structure-only evidence needs two families; high without an artifact needs
 
 test('short samples stamp only on definitive artifacts', () => {
   assert.equal(cues('In conclusion, here are the key takeaways for today.').stamp, 'none');
+  assert.equal(cues('In conclusion, here are the key takeaways for today.', {}, 'balanced').stamp, 'low');
+  assert.equal(cues('In conclusion, here are the key takeaways for today.', {}, 'sensitive').stamp, 'moderate');
   const short = cues('As an AI language model, I cannot do that.');
   assert.equal(short.coverage.level, 'short');
   assert.equal(short.stamp, 'high');
@@ -171,4 +180,57 @@ test('adapter contract validates the optional rendersMarkdown flag', () => {
   assert.doesNotThrow(() => dom.window.validate({ ...adapter, rendersMarkdown: true }, { id: 'example' }));
   assert.throws(() => dom.window.validate({ ...adapter, rendersMarkdown: 'yes' }, { id: 'example' }));
   dom.window.close();
+});
+
+test('chatbot register needs two distinct phrases except in the sensitive profile', () => {
+  const two = 'Hey fellow Redditors! My sleep schedule has been a mess since the move and I keep waking up at three. Any advice would be greatly appreciated.';
+  assert.ok(ids(two).includes('chatbot-register'));
+  const one = 'My sleep schedule has been a mess since the move and I keep waking up at three in the morning. Thanks in advance.';
+  assert.ok(!ids(one).includes('chatbot-register'));
+  assert.ok(cues(one, {}, 'sensitive').families.some((family) => family.id === 'chatbot-register'));
+});
+
+test('creator-post template needs a closer, and only counts as a pattern when sensitive', () => {
+  const { probes } = JSON.parse(fs.readFileSync(new URL('./fixtures/rubric-probes.json', import.meta.url), 'utf8'));
+  const post = probes.find((probe) => probe.id === 'linkedin-creator-template').text;
+  const tier = (sensitivity) => cues(post, {}, sensitivity).families.find((family) => family.id === 'engagement-template').tier;
+  assert.equal(tier('strict'), 'supporting');
+  assert.equal(tier('sensitive'), 'moderate');
+  assert.match(cues(post).families.find((family) => family.id === 'engagement-template').detail, /engagement prompt, hashtag block/);
+  const listOnly = 'Packing list for the trip\n\n- Tent and poles\n- Stove and fuel\n- Too many socks\n- A paperback for rainy days';
+  assert.ok(!ids(listOnly, {}).includes('engagement-template'));
+  // Each sentence on its own line still forms a contrast pivot.
+  assert.ok(ids("Most people think leadership means having every answer.\n\nIt's not.\n\nIt's about asking better questions every single week with the team.\n\nThe best leaders don't create followers.\nThey create more leaders who grow on their own.").includes('contrast-framing'));
+});
+
+test('stamp sensitivity setting switches between strict, Possible AI and sensitive stamps', () => {
+  const uniform = 'The team met early on Monday to plan the week. Everyone brought notes from the previous sprint review. We listed the tasks that still needed an owner. Then we matched each task with a person. The meeting ended a little before ten.';
+  const html = '<!doctype html><body><article role="article" id="u"><div data-testid="User-Name">Example</div><div data-testid="tweetText">' + uniform + '</div></article></body>';
+  const key = 'ai-heuristic:x:settings:v2';
+  const badgeFor = (stored) => {
+    const { window } = loadDom('x', html, 'https://x.com/home', { setup(w) { if (stored) w.localStorage.setItem(key, JSON.stringify(stored)); } });
+    const badge = window.document.querySelector('#u .ai-heuristic-badge');
+    const result = badge && { text: badge.textContent, tone: badge.dataset.cueTone, label: badge.getAttribute('aria-label') };
+    window.close();
+    return result;
+  };
+  const balanced = badgeFor(null);
+  assert.equal(balanced.text, 'Possible AI');
+  assert.equal(balanced.tone, 'low');
+  assert.match(balanced.label, /^Possible AI: low signal level/);
+  assert.equal(badgeFor({ cueSensitivity: 'strict' }), null);
+  assert.equal(badgeFor({ cueSensitivity: 'sensitive' }).text, 'AI Detected');
+  assert.equal(badgeFor({ cueSensitivity: 'nonsense', sensitivity: 'aggressive' }).text, 'Possible AI', 'invalid values fall back to balanced');
+
+  const { window } = loadDom('x', html, 'https://x.com/home');
+  window.document.querySelector('#u .ai-heuristic-badge').click();
+  const select = window.document.querySelector('select[aria-label="Stamp sensitivity"]');
+  assert.ok(select);
+  assert.deepEqual(plain([...select.options].map((option) => option.value)), ['strict', 'balanced', 'sensitive']);
+  assert.equal(select.value, 'balanced');
+  select.value = 'strict';
+  select.dispatchEvent(new window.Event('change'));
+  assert.equal(JSON.parse(window.localStorage.getItem(key)).cueSensitivity, 'strict');
+  window.__controller.scanNow();
+  assert.equal(window.document.querySelector('#u .ai-heuristic-badge'), null);
 });

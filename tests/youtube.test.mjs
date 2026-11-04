@@ -168,7 +168,7 @@ for (const distribution of ['source', 'combined', 'targeted']) describe(distribu
     assert.match(badge.getAttribute('aria-label'), /Short sample/);
     assert.equal(badge.querySelector('.ai-heuristic-meter'),null);
     // Short samples stamp only on definitive artifacts, which score high.
-    assert.match(badge.getAttribute('aria-label'),/high signal level\. 1 of 13 pattern families matched, 3 points/);
+    assert.match(badge.getAttribute('aria-label'),/high signal level\. 1 of 15 pattern families matched, 3 points/);
     const unknown=window.document.querySelector('#unknown .ai-heuristic-badge');
     assert.equal(unknown,null);
     badge.click();const details=window.document.querySelector('details');details.open=true;

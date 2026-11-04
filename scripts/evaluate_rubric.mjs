@@ -2,7 +2,7 @@
 // weight, or threshold is fitted from the data, and nothing here ships.
 //
 //   node scripts/evaluate_rubric.mjs --input data/hc3-eli5.jsonl [--input more.jsonl]
-//     [--baseline-ref <git-ref>] [--research] [--limit N] [--json out.json]
+//     [--baseline-ref <git-ref>] [--sensitivity strict|balanced|sensitive] [--research] [--limit N] [--json out.json]
 //
 // Rows follow training/README.md: {text, authorship: human|ai|mixed, platform?,
 // kind?, links?}. Text published before 30 Nov 2022 can serve as a human-only
@@ -19,6 +19,7 @@ let baselineRef = null;
 let jsonOut = null;
 let limit = Infinity;
 let research = false;
+let sensitivity = 'balanced';
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
   if (arg === '--input') inputs.push(args[++index]);
@@ -26,6 +27,7 @@ for (let index = 0; index < args.length; index += 1) {
   else if (arg === '--json') jsonOut = args[++index];
   else if (arg === '--limit') limit = Number(args[++index]);
   else if (arg === '--research') research = true;
+  else if (arg === '--sensitivity') sensitivity = args[++index];
   else throw new Error('Unknown argument: ' + arg);
 }
 if (!inputs.length) throw new Error('Usage: node scripts/evaluate_rubric.mjs --input rows.jsonl [--baseline-ref ref] [--research] [--json out.json]');
@@ -62,6 +64,7 @@ function engineFactory(source) {
 
 // The runtime decides visibility; mirror it for releases that predate
 // cueAssessment.stamp (0.9.x stamped any matched family, high at 3+).
+// "low" is the 0.10 "Possible AI" stamp, reported separately.
 function stampOf(analysis) {
   const cues = analysis.cueAssessment;
   if (typeof cues.stamp === 'string') return cues.stamp;
@@ -115,7 +118,7 @@ for (const path of inputs) {
   }
 }
 
-const report = { purpose: 'Rule measurement only; nothing is fitted or shipped from these rows.', inputs, n: rows.length, engines: {} };
+const report = { purpose: 'Rule measurement only; nothing is fitted or shipped from these rows.', inputs, sensitivity, n: rows.length, engines: {} };
 for (const [name, source] of Object.entries(sources)) {
   const engineFor = engineFactory(source);
   const byLabel = {};
@@ -124,14 +127,15 @@ for (const [name, source] of Object.entries(sources)) {
   const researchValues = {};
   for (const row of rows) {
     const engine = engineFor(String(row.platform || 'unknown'));
-    const analysis = engine.analyze(String(row.text || ''), { kind: row.kind === 'post' ? 'post' : 'comment', links: Array.isArray(row.links) ? row.links : [] }, {});
+    const analysis = engine.analyze(String(row.text || ''), { kind: row.kind === 'post' ? 'post' : 'comment', links: Array.isArray(row.links) ? row.links : [] }, { cueSensitivity: sensitivity });
     const stamp = stampOf(analysis);
     const label = row.label;
-    const entry = byLabel[label] || (byLabel[label] = { n: 0, assessed: 0, stamped: 0, high: 0 });
+    const entry = byLabel[label] || (byLabel[label] = { n: 0, assessed: 0, stamped: 0, high: 0, possible: 0 });
     entry.n += 1;
     if (analysis.cueAssessment.assessed) entry.assessed += 1;
-    if (stamp !== 'none') entry.stamped += 1;
+    if (stamp === 'moderate' || stamp === 'high') entry.stamped += 1;
     if (stamp === 'high') entry.high += 1;
+    if (stamp === 'low') entry.possible += 1;
     for (const family of analysis.cueAssessment.families) {
       const counts = families[family.id] || (families[family.id] = {});
       counts[label] = (counts[label] || 0) + 1;
@@ -140,7 +144,7 @@ for (const [name, source] of Object.entries(sources)) {
     const lengthEntry = (byLength[lengthKey] || (byLength[lengthKey] = {}));
     const lengthLabel = lengthEntry[label] || (lengthEntry[label] = { n: 0, stamped: 0 });
     lengthLabel.n += 1;
-    if (stamp !== 'none') lengthLabel.stamped += 1;
+    if (stamp === 'moderate' || stamp === 'high') lengthLabel.stamped += 1;
     if (researchSignals && name === 'current') {
       const signals = researchSignals(String(row.text || ''));
       for (const [key, value] of Object.entries(signals)) {
@@ -154,7 +158,8 @@ for (const [name, source] of Object.entries(sources)) {
   for (const [label, entry] of Object.entries(byLabel)) {
     summary.labels[label] = {
       n: entry.n, assessed: rate(entry.assessed, entry.n),
-      stamped: rate(entry.stamped, entry.n), high: rate(entry.high, entry.n)
+      stamped: rate(entry.stamped, entry.n), high: rate(entry.high, entry.n),
+      possible: rate(entry.possible, entry.n), anyStamp: rate(entry.stamped + entry.possible, entry.n)
     };
   }
   for (const [id, counts] of Object.entries(families)) {
@@ -179,7 +184,7 @@ const pct = (value) => (100 * value.rate).toFixed(1) + '% [' + (100 * value.ci95
 for (const [name, summary] of Object.entries(report.engines)) {
   console.log('\n== ' + name);
   for (const [label, entry] of Object.entries(summary.labels)) {
-    console.log(`${label.padEnd(6)} n=${String(entry.n).padStart(5)}  stamped ${pct(entry.stamped)}  high ${pct(entry.high)}  assessed ${pct(entry.assessed)}`);
+    console.log(`${label.padEnd(6)} n=${String(entry.n).padStart(5)}  AI Detected ${pct(entry.stamped)}  high ${pct(entry.high)}  Possible AI ${pct(entry.possible)}  any ${pct(entry.anyStamp)}`);
   }
   console.log('family'.padEnd(26) + 'human'.padEnd(24) + 'ai'.padEnd(24) + 'LR+');
   for (const [id, entry] of Object.entries(summary.families).sort()) {

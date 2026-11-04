@@ -70,7 +70,7 @@ Disabling analysis or entering an excluded route removes badges, closes details,
 
 ## Settings and coexistence
 
-Settings retain `ai-heuristic:<platform-id>:settings:v2` in origin-local storage. Known fields are validated; unknown fields and legacy sensitivity survive writes. `enabled` is additive. Invalid or denied storage uses in-memory defaults. Origins remain independent, including X/Twitter aliases and Reddit subdomains.
+Settings retain `ai-heuristic:<platform-id>:settings:v2` in origin-local storage. Known fields are validated; unknown fields and legacy sensitivity survive writes. `cueSensitivity` (`strict`, `balanced` or `sensitive`; default `balanced`) selects the stamp profile and is part of the analysis cache key; it is separate from the legacy diagnostic-model `sensitivity` field. `enabled` is additive. Invalid or denied storage uses in-memory defaults. Origins remain independent, including X/Twitter aliases and Reddit subdomains.
 
 Facebook opts into manager storage because live Safari testing found that its page-storage key disappeared even after a successful write. The manager key appends `@<origin>` to the existing settings key. Startup waits for the asynchronous read before analyzing, imports surviving page preferences when the manager has none, and serializes writes so rapid checkbox changes cannot arrive out of order. A stopped runtime cannot be revived by a late read. Missing/denied APIs fall back to page/tab settings with an explicit persistence notice. Only preference objects are stored; post text and analyses are never persisted. Userscripts also scopes manager values by script filename, so updates preserve them, while switching Facebook distributions may require enabling the destination installation again.
 

@@ -1,197 +1,324 @@
 {
- "purpose": "Hand-written behavior probes for the 0.10 cue rubric. Styles describe how each text was written, not verified authorship; they cannot estimate accuracy. See docs/accuracy-validation.md for measured rates.",
+ "purpose": "Hand-written behavior probes for the 0.10 cue rubric, with the expected stamp under each sensitivity profile. Styles describe how each text was written, not verified authorship; they cannot estimate accuracy. See docs/accuracy-validation.md for measured rates.",
  "probes": [
   {
    "id": "casual-budget-advice",
    "style": "human-style",
    "text": "If you're on a budget, the older model is fine. I bought mine used last spring and it still runs great. Battery is meh though. Overall I'd say go for it.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "two-i-think-openings",
    "style": "human-style",
    "text": "I think the ref blew that call. Honestly the replay was pretty clear. I think they owe us one next week lol.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "clock-times-and-year-range",
    "style": "human-style",
    "text": "We met at 10:30 and stayed until 12:15. I lived there 2015–2019 and the place hasn't changed a bit, honestly. The pizza place on 5th is still open and still cash only. Worth the walk if you're nearby and hungry.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "numbered-recipe",
    "style": "human-style",
    "text": "1. Preheat oven to 400.\n2. Toss the potatoes in oil.\n3. Roast for 35 minutes.",
-   "stamp": "none",
    "families": [
     "structured-presentation"
    ],
-   "note": "Lists are supporting evidence and never stamp alone."
+   "note": "Lists are supporting evidence and never stamp alone.",
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "low"
+   }
   },
   {
    "id": "enthusiastic-meetup",
    "style": "human-style",
    "text": "Amazing night at the meetup! Incredible talks and great people. Overall a fun evening, thanks to everyone who came out.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "five-i-sentences",
    "style": "human-style",
    "text": "I got the job! I start Monday at the downtown office. I was so nervous during the interview but it went fine. I can't believe it honestly. I owe my sister a big dinner for the mock interviews.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "em-dash-asides",
    "style": "human-style",
    "text": "The trail was rough—mud everywhere—but the view at the top made up for it. We got lost twice — my fault — and ended up taking the long way back down past the old mill.",
-   "stamp": "none",
    "families": [
     "structured-presentation"
-   ]
+   ],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "low"
+   }
   },
   {
    "id": "contraction-heavy",
    "style": "human-style",
    "text": "Can't believe it's already Friday. Didn't get half of what I wanted done, but that's how it goes. Gonna sleep in tomorrow and not feel bad about it.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "abbreviations",
    "style": "human-style",
    "text": "We met Dr. Smith at 9 a.m. at Acme Inc. on Main St. and talked for approx. 20 min. about the No. 5 proposal. It was fine. Then we left at 10 a.m. and grabbed lunch with Prof. Lee and Ms. Park.",
-   "stamp": "none",
-   "families": []
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "humbled-and-honored",
    "style": "ambiguous",
    "text": "Humbled and honored to be named one of the Top 50 leaders in fintech this year. Thank you to my incredible team and mentors who made this possible.",
-   "stamp": "none",
    "families": [],
-   "note": "Promotional terms without a framing phrase are not enough."
+   "note": "Promotional terms without a framing phrase are not enough.",
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "none"
+   }
   },
   {
    "id": "weak-phrases-in-threes",
    "style": "human-style",
    "text": "I've been running my own small bakery for about six years now, and honestly the biggest thing nobody tells you is how much of the job is just logistics. Flour orders, oven maintenance, staff schedules, the health inspector showing up on the one day the walk-in fridge decides to die. That said, I wouldn't trade it. The mornings are quiet and the regulars are great. My advice if you're thinking about it: work in someone else's bakery for a year first. You'll learn more in that year than in any course. Also, as a result of doing that, you'll know whether you actually like 4am starts, which is a bigger deal than people think. In other words, test the lifestyle before you sign a lease. My wife still jokes that I married the oven. She's not wrong.",
-   "stamp": "moderate",
    "families": [
     "formulaic-framing"
    ],
-   "note": "Known false positive: four common phrases in one long human post still meet the weak-phrase rule."
+   "note": "Known false positive: four common phrases in one long human post still meet the weak-phrase rule.",
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "preamble-and-signoff",
    "style": "assistant-paste",
    "text": "Certainly! Here's a LinkedIn post for you:\n\nExcited to announce that I've joined Acme Corp as Head of Growth. Grateful for the support of my network.\n\nFeel free to customize it further!",
-   "stamp": "high",
    "families": [
     "assistant-leftovers"
-   ]
+   ],
+   "stamps": {
+    "strict": "high",
+    "balanced": "high",
+    "sensitive": "high"
+   }
   },
   {
    "id": "unfilled-placeholders",
    "style": "assistant-paste",
    "text": "Thrilled to share that [Company Name] has just launched our new product. A huge thank you to [Your Name] and the whole team for making this possible. Let's keep building together.",
-   "stamp": "high",
    "families": [
     "assistant-leftovers"
-   ]
+   ],
+   "stamps": {
+    "strict": "high",
+    "balanced": "high",
+    "sensitive": "high"
+   }
   },
   {
    "id": "knowledge-cutoff",
    "style": "assistant-paste",
    "text": "As of my last knowledge update in 2023, the company had not released a new version. I don't have access to real-time information, so please check the official website for the latest details on pricing and availability.",
-   "stamp": "high",
    "families": [
     "self-disclosure"
-   ]
+   ],
+   "stamps": {
+    "strict": "high",
+    "balanced": "high",
+    "sensitive": "high"
+   }
   },
   {
    "id": "markdown-on-linkedin",
    "style": "assistant-paste",
    "text": "**Key Lessons From My First Year as a Founder**\n\nBuilding a company is hard. It requires patience, resilience, and a clear vision. Every day brings new challenges and new opportunities to learn and grow as a leader.",
-   "stamp": "high",
    "families": [
     "markup-artifacts",
     "typography"
-   ]
+   ],
+   "stamps": {
+    "strict": "high",
+    "balanced": "high",
+    "sensitive": "high"
+   }
   },
   {
    "id": "linkedin-leadership",
    "style": "assistant-style",
    "text": "In today's fast-paced world, leadership isn't about titles—it's about impact. Great leaders don't just manage teams; they empower people to grow. They listen deeply, communicate clearly, and lead with empathy. The best leaders create space for others to shine. At the end of the day, leadership is a journey, not a destination.",
-   "stamp": "moderate",
    "families": [
     "formulaic-framing",
     "sentence-uniformity"
-   ]
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "inflected-buzzwords",
    "style": "assistant-style",
    "text": "We're leveraging cutting-edge tools to unlocking new value. Our team is empowering creators and elevating standards across the landscape. It's a testament to our commitment to fostering innovation and navigating complexity.",
-   "stamp": "moderate",
    "families": [
     "formulaic-framing",
     "ai-vocabulary"
-   ]
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "llm-vocabulary",
    "style": "assistant-style",
    "text": "Let's delve into the rich tapestry of modern work culture. This pivotal shift underscores the importance of fostering seamless collaboration in an ever-evolving landscape. It's crucial to navigate these intricate dynamics thoughtfully.",
-   "stamp": "moderate",
    "families": [
     "formulaic-framing",
     "ai-vocabulary"
-   ]
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "noun-subject-contrasts",
    "style": "assistant-style",
    "text": "Success isn't about luck. It's about consistency. Leadership isn't about control. It's about trust. Growth isn't about speed. It's about direction. Remember that every single day.",
-   "stamp": "moderate",
    "families": [
     "contrast-framing",
     "repeated-openings"
-   ]
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "dash-and-verb-pivots",
    "style": "assistant-style",
    "text": "This is not just a product launch; it's a movement. It's not about features — it's about people. We aren't building software. We're building the future of how teams collaborate every day.",
-   "stamp": "moderate",
    "families": [
     "contrast-framing"
-   ]
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
   },
   {
    "id": "emoji-bullets",
    "style": "assistant-style",
    "text": "Three lessons from scaling our startup this year:\n\n🚀 Hire for attitude, train for skill.\n💡 Talk to customers every single week.\n👉 Ship small, ship often, learn fast.\n\nWhich one resonates with you most?",
-   "stamp": "none",
    "families": [
     "structured-presentation"
    ],
-   "note": "Lists are supporting evidence and never stamp alone."
+   "note": "Lists are supporting evidence and never stamp alone.",
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "low"
+   }
   },
   {
    "id": "keycap-list",
    "style": "assistant-style",
    "text": "My morning routine for focus:\n\n1️⃣ Wake up at 6 and skip the phone.\n2️⃣ Journal for ten minutes.\n3️⃣ Plan the three big tasks for the day.",
-   "stamp": "none",
    "families": [
     "structured-presentation"
    ],
-   "note": "Lists are supporting evidence and never stamp alone."
+   "note": "Lists are supporting evidence and never stamp alone.",
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "low"
+   }
+  },
+  {
+   "id": "linkedin-creator-template",
+   "style": "assistant-style",
+   "text": "Most people think leadership is about having all the answers.\n\nIt's not.\n\nIt's about asking better questions.\n\nHere's what I learned after 10 years:\n\n→ Listen more than you speak\n→ Give credit publicly\n→ Hire people smarter than you\n\nThe best leaders don't create followers.\nThey create more leaders.\n\nWhat's one lesson you've learned about leadership? 👇\n\n#Leadership #Growth #Management",
+   "families": [
+    "contrast-framing",
+    "structured-presentation",
+    "engagement-template"
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "high"
+   }
+  },
+  {
+   "id": "reddit-chatbot-register",
+   "style": "assistant-style",
+   "text": "Hey fellow Redditors! I've been struggling with my sleep schedule for a while now and nothing seems to work. I've tried melatonin, no screens after nine, and even a weighted blanket. Any advice would be greatly appreciated. Thanks in advance!",
+   "families": [
+    "chatbot-register"
+   ],
+   "stamps": {
+    "strict": "moderate",
+    "balanced": "moderate",
+    "sensitive": "moderate"
+   }
+  },
+  {
+   "id": "reddit-human-advice-request",
+   "style": "human-style",
+   "text": "Sleep schedule is totally wrecked since the new job started. Tried melatonin, no screens after 9, the whole thing. Still up at 3am most nights. Anyone else deal with this? Thanks in advance.",
+   "families": [],
+   "stamps": {
+    "strict": "none",
+    "balanced": "none",
+    "sensitive": "moderate"
+   }
   }
  ]
 }

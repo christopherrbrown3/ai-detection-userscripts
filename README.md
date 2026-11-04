@@ -48,11 +48,12 @@ Evidence is scored with fixed, documented points (version 0.10):
 | Tier | Points | Families |
 | --- | --- | --- |
 | Strong artifact | 3 | Model self-reference or knowledge-cutoff disclaimer; unedited assistant output (preambles such as "Sure! Here's a revised version:", sign-offs, unfilled `[Your Name]` placeholders); assistant markup (`oaicite` citations, chat tokens, literal Markdown on sites that do not render it) |
-| Pattern | 1 | Link copied from an AI assistant (`utm_source=chatgpt.com` and similar); stock framing phrases; repeated "not X, but Y" pivots; words LLMs overuse; copula avoidance and trailing "-ing" clauses; repeated sentence openings; similar sentence lengths; repeated phrases |
-| Formatting | 0.5 | Lists and colon/dash structure; Title Case headings. These count only alongside another family |
+| Pattern | 1 | Link copied from an AI assistant (`utm_source=chatgpt.com` and similar); stock framing phrases; chatbot social-post register ("Hey fellow Redditors", "any advice would be greatly appreciated", "thanks in advance"; two distinct phrases); repeated "not X, but Y" pivots; words LLMs overuse; copula avoidance and trailing "-ing" clauses; repeated sentence openings; similar sentence lengths; repeated phrases |
+| Formatting | 0.5 | Lists and colon/dash structure; Title Case headings; creator-post template (hook line, one-line paragraphs, bullets, an engagement prompt or hashtag block). These count only alongside another family |
 
-- **Orange / moderate:** 1–2.5 points.
-- **Red / high:** 3 points or more. Without a strong artifact, high also needs both word-choice and structure evidence. A double border distinguishes high without relying only on color.
+- **Grey dashed / Possible AI:** some evidence matched, but less than a moderate stamp needs (Balanced and Sensitive only).
+- **Orange / moderate (AI Detected):** 1–2.5 points.
+- **Red / high (AI Detected):** 3 points or more. Without a strong artifact, high also needs both word-choice and structure evidence. A double border distinguishes high without relying only on color.
 - **Rhythm and repetition alone** (openings, sentence lengths, repeated phrases) need two such families to stamp: each matched 2–5% of pre-ChatGPT human answers on its own.
 - **Short samples** (fewer than 20 words or 2 sentences) stamp only on a strong artifact.
 - **Hover:** details grow out from the stamp, showing the matched families and highlighted passages. Moving into the panel keeps it open.
@@ -60,13 +61,17 @@ Evidence is scored with fixed, documented points (version 0.10):
 
 The level reflects fixed evidence points, not the probability that AI wrote the post. Human writing can match these patterns; AI writing can match none. The details show each matched family with its tier, the point total, highlighted passages, sample length, and exclusions. **Short sample** is reported in details and the accessible name. The original post is never highlighted or rewritten.
 
-Multiple matches in a family count once. Lists are excluded from the prose rhythm, repetition and contrast checks; counted openings are excluded from phrase repetition. On a set of pre-ChatGPT human answers, 0.10 stamps 0.4–0.7% of posts, down from 9.6–13.4% in 0.9.1; see the [0.10 accuracy validation](docs/accuracy-validation.md).
+Multiple matches in a family count once. Lists are excluded from the prose rhythm, repetition and contrast checks; counted openings are excluded from phrase repetition. See the [0.10 accuracy validation](docs/accuracy-validation.md) for measured rates per sensitivity.
 
 The **Style cue settings** button remains available when every badge is hidden. Settings are stored locally for the current site/origin:
 
 - enable or disable analysis on this site
 - comments/replies on or off
 - hide signals in short samples
+- **Stamp sensitivity**, measured on RAID's Reddit posts from 2023–24 chat models (human / AI posts stamped):
+  - **Strict:** AI Detected only. 1.1% / 49%.
+  - **Balanced (default):** the same AI Detected stamps, plus Possible AI for weaker evidence. 7.8% / 53% with any stamp.
+  - **Sensitive:** lower cut-offs; one rhythm, formatting or register cue can stamp, and the creator-post template counts as a pattern. 17% / 79%. Useful on LinkedIn if you would rather over-flag; LinkedIn itself is unmeasured.
 
 Zero-match and unassessed posts always stay unbadged. Older saved settings remain readable; the old zero-match visibility preference no longer changes this behavior. See the [0.9 stamp validation report](docs/stamp-validation.md) and [0.9.1 header placement checks](docs/header-stamp-validation.md) for verification and limits.
 
@@ -107,7 +112,7 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 
 The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. Every rule, point value and threshold is hand-written and runs inside the userscript; nothing is trained. Unsupported or uncertain language is skipped, and posts below the stamp threshold have no badge. It makes no probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
 
-Version 0.10 measures the rubric on labeled text with `scripts/evaluate_rubric.mjs` and tunes cut-offs by hand against false-positive rates. On HC3's pre-ChatGPT human answers it stamps 0.4% (Reddit ELI5) and 0.7% (held-out finance), against 9.6% and 13.4% for 0.9.1; ChatGPT recall on the same December 2022 output is 23–26%, down from 69%. HC3 cannot measure current-model vocabulary, contrast, list or Markdown cues. ZipPy compression, Biber-style grammar rates and slop-score lists were measured but not shipped. See the [0.10 accuracy validation](docs/accuracy-validation.md).
+Version 0.10 measures the rubric on labeled text with `scripts/evaluate_rubric.mjs` and tunes cut-offs by hand against false-positive rates. On held-out RAID Reddit posts by 2023–24 chat models, AI Detected catches 49% of AI posts and 1.1% of human posts (0.9.1: 16.5% and 7.3%). On HC3's pre-ChatGPT human answers it stamps 0.4–0.7% in Strict. No labeled LinkedIn, X, Facebook or YouTube corpus was available, so those sites are unmeasured. ZipPy compression, Biber-style grammar rates and slop-score lists were measured but not shipped. See the [0.10 accuracy validation](docs/accuracy-validation.md).
 
 Version 0.9 adds two rule-only checks from the [browser detection research](docs/research/2026-10-28-browser-ai-text-detection.md): recognizable assistant artifacts and repeated contrast constructions. No model training, inference runtime, new runtime dependency, or network service is needed. Diagnostic feature definitions and model weights are unchanged. The [stamp validation report](docs/stamp-validation.md) records the chosen rules and their limits.
 

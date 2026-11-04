@@ -162,6 +162,26 @@ function createDetectorEngine(options) {
     '(?:a|the) (?:crucial|pivotal|key) (?:moment|turning point)', 'left an indelible mark'
   ];
 
+  // How chat models write when asked for a social post: forum-caricature
+  // greetings, request/thanks formulas and confessional set-ups. Mined from
+  // half of RAID's Reddit posts (GPT-4, Llama-2-chat, Mistral-chat, MPT-chat)
+  // and checked on the other half; ordinary people use several of these, so
+  // two distinct phrases are required (docs/accuracy-validation.md).
+  const CHATBOT_REGISTER = [
+    'fellow redditors', 'hey everyone', 'hi everyone', 'hello everyone', 'thanks in advance', 'thank you in advance',
+    'would be greatly appreciated', 'would be much appreciated', 'any advice would be', 'any insights would be',
+    'advice or suggestions', 'insights or advice', 'thoughts or advice', 'tips or advice', 'advice or recommendations',
+    'words of encouragement', 'thanks for reading', 'thank you for reading', 'looking forward to hearing', "i'm open to",
+    "i'm curious to know", 'has anyone else experienced', 'has anyone else had', 'i wanted to share', "i'm reaching out",
+    "i can't help but", "i've been struggling with", 'nothing seems to work', 'nothing seems to help', "it's okay to",
+    "i guess i'm just", 'for a while now', "i've been feeling", 'this community', 'keep the discussion respectful',
+    'on so many levels', 'challenging and rewarding', "i'm at a loss", 'any input would be', 'i would love to hear',
+    "i'd love to hear", 'share your experiences', 'share your thoughts', 'feel free to share', 'in the comments below',
+    // LinkedIn-style sign-offs (unmeasured: no labeled LinkedIn corpus is available).
+    'what are your thoughts', "let's connect", 'drop your thoughts', "let's discuss", 'join the conversation',
+    'excited to see what the future holds', 'the future is bright'
+  ];
+
   // Line-start bullets, numbers, keycaps and emoji. The emoji ranges are
   // explicit so training/features.py can mirror them without \p classes.
   const LIST_MARKER = /^(?:[ \t]*)(?:[-*•→➜➔►▸✓✔☑✅]\uFE0F?|\d+[.)]|\d\uFE0F?\u20E3|[\u{1F300}-\u{1FAFF}\u2600-\u27BF\u2B00-\u2BFF]\uFE0F?)[ \t]+/u;
@@ -418,14 +438,33 @@ function createDetectorEngine(options) {
     'contrast-framing': { tier: 'moderate', evidence: 'word-choice' },
     'ai-vocabulary': { tier: 'moderate', evidence: 'word-choice' },
     'llm-phrasing': { tier: 'moderate', evidence: 'word-choice' },
+    'chatbot-register': { tier: 'moderate', evidence: 'word-choice' },
     'repeated-openings': { tier: 'moderate', evidence: 'structure' },
     'sentence-uniformity': { tier: 'moderate', evidence: 'structure' },
     'content-repetition': { tier: 'moderate', evidence: 'structure' },
     'structured-presentation': { tier: 'supporting', evidence: 'structure' },
+    'engagement-template': { tier: 'supporting', evidence: 'structure' },
     typography: { tier: 'supporting', evidence: 'structure' }
   };
   const TIER_POINTS = { definitive: 3, moderate: 1, supporting: 0.5 };
   const STAMP_POINTS = { moderate: 1, high: 3 };
+  // Stamp sensitivity, chosen per site. Strict shows only moderate/high
+  // stamps. Balanced (default) uses the same rules and also shows a muted
+  // "Possible AI" stamp for evidence below the moderate threshold. Sensitive
+  // lowers rule cut-offs, lets one rhythm/formatting family stamp, and counts
+  // creator-post templates; it flags far more human posts.
+  const PROFILES = {
+    strict: { lowStamp: false, weakFramingMin: 3, scaleFraming: true, registerMin: 2, vocabularyMin: 3, vocabularyDensity: 1,
+      phrasingMin: 2, notButWeight: 0.5, strictOpenings: true, pairStructure: true, supportingAlone: false, shortModerate: false,
+      templateTier: 'supporting' },
+    sensitive: { lowStamp: 'any', weakFramingMin: 1, scaleFraming: false, registerMin: 1, vocabularyMin: 2, vocabularyDensity: 0.5,
+      phrasingMin: 1, notButWeight: 1, strictOpenings: false, pairStructure: false, supportingAlone: true, shortModerate: true,
+      templateTier: 'moderate' }
+  };
+  PROFILES.balanced = { ...PROFILES.strict, lowStamp: 'evidence' };
+  function profileFor(name) {
+    return PROFILES[name] ? { name, ...PROFILES[name] } : { name: 'balanced', ...PROFILES.balanced };
+  }
 
   function compileTerms(terms, literal) {
     return terms.map((term, key) => {
@@ -446,12 +485,13 @@ function createDetectorEngine(options) {
     framing: compileTerms(FRAMING_TERMS, true),
     buzz: compileTerms(BUZZ_TERMS, false),
     vocabulary: compileTerms(AI_VOCABULARY, false),
-    phrasing: compileTerms(LLM_PHRASING, false)
+    phrasing: compileTerms(LLM_PHRASING, false),
+    register: compileTerms(CHATBOT_REGISTER, true)
   };
 
   const KNOWLEDGE_DISCLAIMER = /\b(?:as of my (?:last|latest|most recent) (?:knowledge |training )?(?:update|cutoff|cut-off|training(?: data)?)|my (?:knowledge|training(?: data)?) (?:cutoff|cut-off)|up to my (?:last |latest )?(?:knowledge |training )?(?:update|cutoff|cut-off)|i (?:don't|do not) have (?:access to )?(?:real-time|current|live) (?:information|data|updates)|i (?:don't|do not) have (?:the ability to browse|browsing capabilities|access to the internet)|i (?:don't|do not|cannot) have personal (?:opinions|feelings|beliefs|emotions|experiences|preferences))/gi;
   const ASSISTANT_OPENER = /^[ \t]*(?:certainly|sure|absolutely|of course)[!,.][ \t]*(?:here(?:'s| is| are)|i(?:'d| would) be (?:happy|glad) to)\b/gim;
-  const DELIVERY_LINE = /^[ \t]*here(?:'s| is| are)[ \t]+(?:a|an|the|your|some|two|three|a few)[ \t]+(?:(?:revised|polished|refined|rewritten|updated|improved|shorter|longer|final|possible|sample|suggested|professional|engaging|catchy|concise|formal|casual|friendly|optimized|linkedin|twitter|facebook|instagram|youtube|social media|new|short|brief|quick)[ \t]+){0,2}(?:version|draft|post|tweet|thread|caption|reply|response|comment|message|email|bio|summary|rewrite|rewording|paraphrase)s?\b[^\n:]{0,60}:/gim;
+  const DELIVERY_LINE = /^[ \t]*here(?:'s| is| are)[ \t]+(?:a|an|the|your|some|two|three|a few)[ \t]+(?:(?:revised|polished|refined|rewritten|updated|improved|shorter|longer|final|possible|sample|suggested|professional|engaging|catchy|concise|formal|casual|friendly|optimized|linkedin|twitter|reddit|facebook|instagram|youtube|social media|new|short|brief|quick)[ \t]+){0,2}(?:version|draft|post|tweet|thread|caption|reply|response|comment|message|email|bio|summary|rewrite|rewording|paraphrase)s?\b[^\n:]{0,60}:/gim;
   const ASSISTANT_SIGNOFF = /\b(?:feel free to (?:customize|adjust|modify|tweak|tailor|personalize|adapt) (?:it|this|the (?:post|message|text|caption|draft))\b[^.!\n]{0,40}?(?:further|to (?:fit|suit|match|better)|as (?:needed|you see fit)|based on)|let me know if you(?:'d| would) like (?:me to (?:make|adjust|revise|tweak|change|expand|shorten|add|modify|create|write)|any (?:changes|adjustments|modifications|revisions|tweaks|edits))|would you like me to (?:adjust|revise|make|create|expand|shorten|add|tweak|write|draft|rewrite)|i hope this (?:post|draft|caption|version) (?:helps|works|meets|resonates|captures))/gi;
   // Case-sensitive: chatbot placeholders use Title Case, while ironic human
   // asides such as "[insert joke here]" usually do not.
@@ -464,9 +504,11 @@ function createDetectorEngine(options) {
   // to links they cite. They show AI-tool involvement, not authorship.
   const AI_REFERRAL_TEXT = /\b(?:utm_source=(?:chatgpt\.com|openai|copilot\.com)|referrer=grok\.com)\b/gi;
   const AI_UTM_SOURCES = new Set(['chatgpt.com', 'openai', 'copilot.com']);
+  const ENGAGEMENT_PROMPT = /(?:\bagree\?|\bthoughts\?|what do you think\?|what(?:'s| is| are) your\b[^\n?]{0,60}\?|how (?:do|would) you\b[^\n?]{0,60}\?|let me know in the comments|drop (?:a|your)\b[^\n]{0,40}\b(?:comment|below)|comment below|♻|\brepost\b|\bfollow (?:me|for more)\b|save this (?:post|for later)|👇)/i;
 
   // "Not X, but Y" surface patterns. The first ten are ported from slop-score
-  // js/regexes-stage1.js, https://github.com/sam-paech/slop-score, under this notice:
+  // js/regexes-stage1.js (adapted: attached 's/'re and line-start anchors),
+  // https://github.com/sam-paech/slop-score, under this notice:
   //   MIT License. Copyright (c) 2025 Sam Paech
   //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
   //   associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -492,8 +534,8 @@ function createDetectorEngine(options) {
         '(?!when\\b|while\\b|which\\b|who\\b|whom\\b|whose\\b|where\\b|if\\b|that\\b|as\\b|because\\b|although\\b|though\\b|till\\b|until\\b|unless\\b|' +
         'here\\b|there\\b|then\\b|my\\b|we\\b|I\\b|you\\b|it\\s+seems\\b|it\\s+appears\\b|it\\s+felt\\b|it\\s+looks?\\b|anything\\b)',
       `\\b(?:\\w+n't|not)\\s+(?:just|only|merely)?\\s+(?:(?![.?!]).){1,${MAXG}}?(?:-|\\s-\\s|[—–])\\s*${PRON}\\s+(?:(?:'re|are|'s|is|were|was)\\b|(?!'re|are|'s|is|were|was)[*_~]*[a-z]\\w*)`,
-      `${START}\\s*${Q}(?:(?:${PRON}\\s+${BE}\\s+not)|(?:${PRON}\\s+${BE}n't)|(?:it's|they're|that's)\\s+not)\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}\\s+(?:${BE}|(?:'s|'re))\\b(?!\\s+not\\b)`,
-      `${START}\\s*${REPORTER}(?!\\s*not\\s+without\\b)(?![^.?!]{0,50}\\bnot\\s+put\\b)[^.?!]{0,${MAXG}}?\\b(?:${BE_NEG})\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}\\b(?:'re|\\s+(?:are|were|is|was))\\b(?!\\s+not\\b)`,
+      `${START}\\s*${Q}(?:(?:${PRON}\\s+${BE}\\s+not)|(?:${PRON}\\s+${BE}n't)|(?:it's|they're|that's)\\s+not)\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}(?:\\s+${BE}|'s|'re)\\b(?!\\s+not\\b)`,
+      `${START}\\s*${REPORTER}(?!\\s*not\\s+without\\b)(?![^.?!]{0,50}\\bnot\\s+put\\b)[^.?!]{0,${MAXG}}?\\b(?:${BE_NEG})\\b[^.?!]{0,${MAXG}}[.;:?!]\\s*${Q}${PRON}\\b(?:'re|'s|\\s+(?:are|were|is|was))\\b(?!\\s+not\\b)`,
       `${START}\\s*[^.?!]{0,${MAXG}}\\bno\\s+longer\\b[^.;:?!]{0,${MAXG}}[.;:?!]\\s*(?:it|they|this|that)\\s+(?:is|are|was|were)\\b(?!\\s+not\\b)`,
       `${START}\\s*${Q}${PRON}\\b(?:'s|'re|\\s+(?:is|are|was|were))?\\s+not\\s+just\\b[^.?!]{0,${MAXG}}[.?!]\\s*${Q}${PRON}\\b(?:'s|'re|\\s+(?:is|are|was|were))\\b(?!\\s+not\\b)`,
       `${START}[^.?!]*?\\b(?:do|does|did)n't\\b\\s+(?:(?:\\w+\\s+){0,2})([a-z]{3,})\\b[^.?!]*[.?!]\\s*${PRON}\\s+\\1(?:ed|es|s|ing)?\\b`,
@@ -504,7 +546,9 @@ function createDetectorEngine(options) {
       // pivots such as "We aren't building X. We're building Y."
       "\\b(?:it|this|that)(?:'s|\\s+is)\\s+not\\s+(?:just\\s+|only\\s+|about\\s+)?[^.?!,;\\n]{1,80}[,;]\\s*(?:it|this|that)(?:'s|\\s+is)\\b",
       "\\b(we|you|they|i)\\s+(?:aren't|are\\s+not|weren't|were\\s+not|don't|do\\s+not|didn't|did\\s+not|'re\\s+not|'m\\s+not|am\\s+not)\\s+([a-z]{3,})\\b[^.?!\\n]{0,120}[.?!;—–]\\s*\\1(?:'re|'m|\\s+(?:are|am|were|do|did))?\\s+\\2\\b"
-    ].map((source) => new RegExp(source, 'gi'));
+    // 'm' lets ^ match after line breaks (LinkedIn posts put each sentence on its own
+    // line); clause bodies stay within one line so a pivot never absorbs a list above it.
+    ].map((source) => new RegExp(source.replace(/\[\^\.\?!\]/g, '[^.?!\\n]'), 'gim'));
   })();
 
   function dropNested(spans) {
@@ -565,14 +609,15 @@ function createDetectorEngine(options) {
     return null;
   }
 
-  function scoreFamilies(families, coverage, assessed) {
+  function scoreFamilies(families, coverage, assessed, profile) {
     const counts = { definitive: 0, moderate: 0, supporting: 0 };
     for (const family of families) counts[family.tier] += 1;
     const core = counts.definitive * TIER_POINTS.definitive + counts.moderate * TIER_POINTS.moderate;
-    const points = core + (core > 0 ? counts.supporting * TIER_POINTS.supporting : 0);
+    const supportingPoints = counts.supporting * TIER_POINTS.supporting;
+    const points = core + (core > 0 || profile.supportingAlone ? supportingPoints : 0);
     let stamp = 'none';
     if (assessed) {
-      if (coverage.level === 'short') stamp = counts.definitive ? 'high' : 'none';
+      if (coverage.level === 'short') stamp = counts.definitive ? 'high' : profile.shortModerate && points >= STAMP_POINTS.moderate ? 'moderate' : 'none';
       else if (points >= STAMP_POINTS.high) {
         // Correlated families are not independent confirmation: without a
         // definitive artifact, high needs both word-choice and structure.
@@ -583,12 +628,16 @@ function createDetectorEngine(options) {
       // answers (docs/accuracy-validation.md), so structure-only evidence
       // needs two families before it can stamp.
       const decisive = families.filter((family) => family.tier !== 'supporting');
-      if (stamp !== 'none' && !decisive.some((family) => family.evidence !== 'structure') && decisive.length < 2) stamp = 'none';
+      if (profile.pairStructure && stamp !== 'none' && !decisive.some((family) => family.evidence !== 'structure') && decisive.length < 2) stamp = 'none';
+      // "Possible AI": some evidence matched, but less than a moderate stamp needs.
+      if (stamp === 'none' && profile.lowStamp === 'any' && families.length) stamp = 'low';
+      if (stamp === 'none' && profile.lowStamp === 'evidence' && (decisive.length || supportingPoints >= STAMP_POINTS.moderate)) stamp = 'low';
     }
     return { counts, points, stamp };
   }
 
-  function analyzeStyleCues(rawText, extracted, context) {
+  function analyzeStyleCues(rawText, extracted, context, sensitivity) {
+    const profile = profileFor(sensitivity);
     const parsed = extracted.parsed || parseText(rawText);
     const raw = parsed.masked;
     const norm = normalizeApostrophes(raw);
@@ -600,9 +649,10 @@ function createDetectorEngine(options) {
     const proseTokens = prose.map(tokensWithOffsets);
     const proseWordCount = prose.reduce((sum, sentence) => sum + sentence.length, 0);
     const inList = (span) => parsed.sentences.some((sentence) => sentence.isList && span.start < sentence.end && span.end > sentence.start);
-    function add(id, name, detail, spans) {
+    function add(id, name, detail, spans, tierOverride) {
       const info = FAMILY_INFO[id];
-      families.push({ id, name, detail, spans: spans.slice(0, 8), tier: info.tier, evidence: info.evidence, points: TIER_POINTS[info.tier] });
+      const tier = tierOverride || info.tier;
+      families.push({ id, name, detail, spans: spans.slice(0, 8), tier, evidence: info.evidence, points: TIER_POINTS[tier] });
     }
 
     if (assessed) {
@@ -662,14 +712,14 @@ function createDetectorEngine(options) {
       const distinct = framingKeys(framingSpans);
       const weak = Array.from(distinct).filter((phrase) => WEAK_FRAMING_SET.has(phrase));
       const strong = distinct.size - weak.length;
-      const effective = strong + (weak.length >= 3 ? weak.length : 0);
-      const needed = Math.max(2, Math.ceil(proseWordCount / 120));
+      const effective = strong + (weak.length >= profile.weakFramingMin ? weak.length : 0);
+      const needed = profile.scaleFraming ? Math.max(2, Math.ceil(proseWordCount / 120)) : 2;
       const buzzSpans = termSpans(parsed, COMPILED.buzz);
       const distinctBuzz = new Set(buzzSpans.map((span) => span.key));
       if (effective >= needed || (strong >= 1 && distinctBuzz.size >= 2)) {
         add('formulaic-framing', 'Stock framing phrases',
           strong + ' distinct framing phrase' + (strong === 1 ? '' : 's') + ' (' + needed + ' needed at this length); ' +
-            weak.length + ' common phrases counted only in threes; ' + distinctBuzz.size + ' promotional terms.',
+            weak.length + ' common phrase' + (weak.length === 1 ? '' : 's') + (profile.weakFramingMin > 1 ? ' (counted only in threes); ' : '; ') + distinctBuzz.size + ' promotional terms.',
           [...framingSpans.filter((span) => effective >= needed || !WEAK_FRAMING_SET.has(FRAMING_TERMS[span.key])), ...buzzSpans]
             .sort((a, b) => a.start - b.start));
       }
@@ -682,7 +732,7 @@ function createDetectorEngine(options) {
       const balanced = notBut.filter((span) => /\bnot\s+(?:just|merely|simply)\b/i.test(norm.slice(span.start, span.end)));
       const pivots = mergeOverlapping(CONTRAST_PATTERNS.slice(1).flatMap((re) => regexSpans(norm, re, parsed.excluded)))
         .filter((span) => !inList(span) && !notBut.some((other) => span.start < other.end && span.end > other.start));
-      const contrastWeight = pivots.length + balanced.length + (notBut.length - balanced.length) / 2;
+      const contrastWeight = pivots.length + balanced.length + (notBut.length - balanced.length) * profile.notButWeight;
       if ((contrastWeight >= 2 && proseWordCount >= 30) || contrastWeight >= 3) {
         const contrasts = mergeOverlapping([...pivots, ...notBut]);
         add('contrast-framing', 'Repeated contrast pivots',
@@ -691,14 +741,23 @@ function createDetectorEngine(options) {
 
       const vocabulary = termSpans(parsed, COMPILED.vocabulary);
       const distinctVocabulary = new Set(vocabulary.map((span) => span.key));
-      if (distinctVocabulary.size >= 3 && distinctVocabulary.size * 100 / Math.max(1, extracted.metrics.wordCount) >= 1) {
+      if (distinctVocabulary.size >= profile.vocabularyMin &&
+        distinctVocabulary.size * 100 / Math.max(1, extracted.metrics.wordCount) >= profile.vocabularyDensity) {
         add('ai-vocabulary', 'Words LLMs overuse',
           distinctVocabulary.size + ' distinct words that chatbots use far more than people (for example delve, tapestry, pivotal). One or two can be coincidence.',
           vocabulary);
       }
 
+      const register = termSpans(parsed, COMPILED.register);
+      const distinctRegister = new Set(register.map((span) => span.key));
+      if (distinctRegister.size >= profile.registerMin) {
+        add('chatbot-register', 'Chatbot social-post register',
+          distinctRegister.size + ' stock phrases chat models use when writing posts ("fellow redditors", "thanks in advance", "would be greatly appreciated"). People use some of these too.',
+          register);
+      }
+
       const phrasing = termSpans(parsed, COMPILED.phrasing);
-      if (phrasing.length >= 2) {
+      if (phrasing.length >= profile.phrasingMin) {
         add('llm-phrasing', 'Copula avoidance and trailing -ing clauses',
           phrasing.length + ' constructions such as "serves as", "plays a crucial role", or ", highlighting …".', phrasing);
       }
@@ -728,7 +787,7 @@ function createDetectorEngine(options) {
       const openingSpans = repeatedOpenings.filter((spans) => {
         const tokens = tokenize(raw.slice(spans[0].start, spans[0].end));
         if (tokens.slice(0, 2).every((word) => STOPWORDS.has(word))) return spans.length >= 3 && tokens.length >= 3;
-        return spans.length >= 3 || tokens.length >= 4;
+        return !profile.strictOpenings || spans.length >= 3 || tokens.length >= 4;
       }).flat();
       if (prose.length >= 3 && openingSpans.length) {
         add('repeated-openings', 'Repeated sentence openings',
@@ -805,6 +864,31 @@ function createDetectorEngine(options) {
           listSpans.length >= 3 ? listSpans : punctuation);
       }
 
+      // Creator-post template (LinkedIn "broetry"): a short hook line, mostly
+      // one-line paragraphs, a closing engagement prompt, a hashtag block,
+      // three or more bullets, or a P.S. Human growth writers use it too, so it
+      // is formatting evidence except in the sensitive profile.
+      const allLines = raw.split('\n').filter((line) => line.trim());
+      const blockLines = allLines.map((line) => line.trim());
+      const proseLines = allLines.filter((line) => !LIST_MARKER.test(line)).map((line) => line.trim());
+      const templateFeatures = [];
+      if (blockLines.length >= 4 && !LIST_MARKER.test(allLines[0]) && tokenize(blockLines[0]).length <= 12 &&
+        /^[^\n]*\n[ \t]*\n/.test(raw.trimStart())) templateFeatures.push('hook line');
+      if (proseLines.length >= 4 && proseLines.filter((line) => tokenize(line).length <= 15 && !/[.!?]\s+\S/.test(line)).length / proseLines.length >= 0.7) {
+        templateFeatures.push('one-line paragraphs');
+      }
+      if (listSpans.length >= 3) templateFeatures.push('bullets');
+      const closers = [];
+      if (blockLines.slice(-2).some((line) => ENGAGEMENT_PROMPT.test(normalizeApostrophes(line)))) closers.push('engagement prompt');
+      if (blockLines.length && (blockLines[blockLines.length - 1].match(/(?:^|\s)#[\p{L}\p{N}_]+/gu) || []).length >= 3) closers.push('hashtag block');
+      if (/^P\.?S\.?(?:\s|:)/m.test(raw)) closers.push('P.S.');
+      // A template is a hook/body/closer shape: at least three features, one of them a closer.
+      if (closers.length && templateFeatures.length + closers.length >= 3) {
+        add('engagement-template', 'Creator-post template',
+          'Template features: ' + [...templateFeatures, ...closers].join(', ') + '. Common in AI-written LinkedIn posts and in human growth writing alike.',
+          [], profile.templateTier);
+      }
+
       const typographySpans = [];
       lineOffset = 0;
       const lines = raw.split('\n');
@@ -827,13 +911,13 @@ function createDetectorEngine(options) {
           typographySpans);
       }
     }
-    const score = scoreFamilies(families, coverage, assessed);
+    const score = scoreFamilies(families, coverage, assessed, profile);
     const level = !assessed ? 'unassessed' : score.stamp === 'high' ? 'cue-high' : score.stamp === 'moderate' ? 'cue-moderate' :
-      families.length ? 'cue-weak' : 'cue-none';
+      score.stamp === 'low' ? 'cue-low' : families.length ? 'cue-weak' : 'cue-none';
     return {
       level, text: assessed ? families.length + ' matched' : 'Not assessed',
       families, totalFamilies: Object.keys(FAMILY_INFO).length, coverage, assessed,
-      points: score.points, stamp: score.stamp, tierCounts: score.counts
+      points: score.points, stamp: score.stamp, tierCounts: score.counts, sensitivity: profile.name
     };
   }
 
@@ -1176,7 +1260,7 @@ function createDetectorEngine(options) {
     const calibrated = Boolean(calibration && Number.isFinite(calibration.slope) && Number.isFinite(calibration.intercept));
     const lightweight = !calibrated && !(options && options.diagnostics);
     const extracted = extractFeatures(rawText, safeContext, { lightweight });
-    const cueAssessment = analyzeStyleCues(rawText, extracted, safeContext);
+    const cueAssessment = analyzeStyleCues(rawText, extracted, safeContext, safeSettings.cueSensitivity);
     const excluded = { quotes: 0, code: 0, ...(safeContext.excluded || {}) };
     for (const span of extracted.parsed.excluded) excluded[span.kind] += 1;
     const shared = {
@@ -1376,6 +1460,9 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   const defaults = {
     enabled: options.enabledByDefault !== false,
     sensitivity: 'balanced',
+    // Stamp sensitivity (0.10): strict | balanced | sensitive. Separate from
+    // the legacy diagnostic-model `sensitivity`, which older settings may hold.
+    cueSensitivity: 'balanced',
     analyzeComments: true,
     hideInsufficient: false,
     hideLow: false
@@ -1444,6 +1531,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-width: 3px;
       padding: 0 4px;
     }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+      --aih-accent: #4b5563;
+      --aih-stamp-bg: #f5f6f8;
+      border-style: dashed;
+      font-weight: 700;
+    }
     button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
       margin-inline-start: 6px;
       max-width: calc(100% - 6px);
@@ -1471,6 +1564,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #984000; }
     .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #b01e29; }
+    .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #4b5563; }
     .ai-heuristic-popover[data-entry="stamp"] {
       animation: aih-stamp-grow 180ms cubic-bezier(.16, 1, .3, 1) both;
     }
@@ -1653,6 +1747,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       color: var(--aih-text);
       font: inherit;
       padding: 5px 7px;
+      max-width: 62%;
+      min-width: 0;
     }
     .ai-heuristic-popover .ai-heuristic-popover__footer {
       color: var(--aih-muted);
@@ -1673,8 +1769,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-accent: #ff929a;
         --aih-stamp-bg: #321d22;
       }
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+        --aih-accent: #c3cad6;
+        --aih-stamp-bg: #232833;
+      }
       .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #ffb36b; }
       .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #ff929a; }
+      .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #c3cad6; }
       .ai-heuristic-popover {
         --aih-bg: #151a24;
         --aih-panel: #202735;
@@ -1700,6 +1801,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (typeof result[key] !== 'boolean') result[key] = defaults[key];
     }
     if (!['balanced', 'conservative', 'aggressive'].includes(result.sensitivity)) result.sensitivity = defaults.sensitivity;
+    if (!['strict', 'balanced', 'sensitive'].includes(result.cueSensitivity)) result.cueSensitivity = defaults.cueSensitivity;
     return result;
   }
 
@@ -1782,8 +1884,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    return analysis.cueAssessment.stamp === 'high' ? 'high' : 'moderate';
+    const stamp = analysis.cueAssessment.stamp;
+    return stamp === 'high' ? 'high' : stamp === 'low' ? 'low' : 'moderate';
   }
+
+  function stampLabel(analysis) {
+    return cueTone(analysis) === 'low' ? 'Possible AI' : 'AI Detected';
+  }
+
+  const SENSITIVITY_OPTIONS = [
+    ['strict', 'Strict: strong evidence only'],
+    ['balanced', 'Balanced: also show Possible AI'],
+    ['sensitive', 'Sensitive: lower cut-offs, more false flags']
+  ];
 
   function formatPoints(points) {
     const value = Number.isFinite(points) ? points : 0;
@@ -1825,8 +1938,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
-    badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', stampLabel(analysis)));
+    badge.setAttribute('aria-label', stampLabel(analysis) + ': ' + cueTone(analysis) + ' signal level. ' +
       cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched, ' + formatPoints(cues.points) + '. ' +
       cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
     badge.addEventListener('pointerenter', (event) => {
@@ -1922,6 +2035,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       label.appendChild(input);
       controls.appendChild(label);
     }
+    const sensitivityLabel = createElement('label', '', 'Stamp sensitivity');
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Stamp sensitivity');
+    for (const [value, text] of SENSITIVITY_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      option.selected = settings.cueSensitivity === value;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => saveSettings({ cueSensitivity: select.value }));
+    sensitivityLabel.appendChild(select);
+    controls.appendChild(sensitivityLabel);
     section.appendChild(controls);
     return section;
   }
@@ -1998,7 +2124,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'AI Detected');
+    const title = createElement('h2', '', stampLabel(analysis));
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -2013,13 +2139,15 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
+      ({ high: 'High', moderate: 'Moderate', low: 'Low' })[cueTone(analysis)] + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
         cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
         'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1; ' +
         'formatting counts 0.5 only alongside another pattern. Moderate starts at 1 point and high at 3. ' +
-        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once.'));
+        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once. ' +
+        'Possible AI means some evidence matched, but less than a moderate stamp needs. Sensitivity: ' +
+        (SENSITIVITY_OPTIONS.find(([value]) => value === (cues.sensitivity || settings.cueSensitivity)) || SENSITIVITY_OPTIONS[1])[1] + '.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
@@ -2178,7 +2306,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       return;
     }
     const links = Array.isArray(content.links) ? content.links.filter((href) => typeof href === 'string').slice(0, 20) : [];
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + links.join(' ') + '\n' + text;
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' + links.join(' ') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {

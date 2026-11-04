@@ -103,6 +103,9 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   const defaults = {
     enabled: options.enabledByDefault !== false,
     sensitivity: 'balanced',
+    // Stamp sensitivity (0.10): strict | balanced | sensitive. Separate from
+    // the legacy diagnostic-model `sensitivity`, which older settings may hold.
+    cueSensitivity: 'balanced',
     analyzeComments: true,
     hideInsufficient: false,
     hideLow: false
@@ -171,6 +174,12 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       border-width: 3px;
       padding: 0 4px;
     }
+    button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+      --aih-accent: #4b5563;
+      --aih-stamp-bg: #f5f6f8;
+      border-style: dashed;
+      font-weight: 700;
+    }
     button.ai-heuristic-badge[data-ai-heuristic-ui][data-placement="header"] {
       margin-inline-start: 6px;
       max-width: calc(100% - 6px);
@@ -198,6 +207,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     }
     .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #984000; }
     .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #b01e29; }
+    .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #4b5563; }
     .ai-heuristic-popover[data-entry="stamp"] {
       animation: aih-stamp-grow 180ms cubic-bezier(.16, 1, .3, 1) both;
     }
@@ -380,6 +390,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       color: var(--aih-text);
       font: inherit;
       padding: 5px 7px;
+      max-width: 62%;
+      min-width: 0;
     }
     .ai-heuristic-popover .ai-heuristic-popover__footer {
       color: var(--aih-muted);
@@ -400,8 +412,13 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
         --aih-accent: #ff929a;
         --aih-stamp-bg: #321d22;
       }
+      button.ai-heuristic-badge[data-ai-heuristic-ui][data-cue-tone="low"] {
+        --aih-accent: #c3cad6;
+        --aih-stamp-bg: #232833;
+      }
       .ai-heuristic-popover[data-cue-tone="moderate"] { --aih-accent: #ffb36b; }
       .ai-heuristic-popover[data-cue-tone="high"] { --aih-accent: #ff929a; }
+      .ai-heuristic-popover[data-cue-tone="low"] { --aih-accent: #c3cad6; }
       .ai-heuristic-popover {
         --aih-bg: #151a24;
         --aih-panel: #202735;
@@ -427,6 +444,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       if (typeof result[key] !== 'boolean') result[key] = defaults[key];
     }
     if (!['balanced', 'conservative', 'aggressive'].includes(result.sensitivity)) result.sensitivity = defaults.sensitivity;
+    if (!['strict', 'balanced', 'sensitive'].includes(result.cueSensitivity)) result.cueSensitivity = defaults.cueSensitivity;
     return result;
   }
 
@@ -509,8 +527,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
   }
 
   function cueTone(analysis) {
-    return analysis.cueAssessment.stamp === 'high' ? 'high' : 'moderate';
+    const stamp = analysis.cueAssessment.stamp;
+    return stamp === 'high' ? 'high' : stamp === 'low' ? 'low' : 'moderate';
   }
+
+  function stampLabel(analysis) {
+    return cueTone(analysis) === 'low' ? 'Possible AI' : 'AI Detected';
+  }
+
+  const SENSITIVITY_OPTIONS = [
+    ['strict', 'Strict: strong evidence only'],
+    ['balanced', 'Balanced: also show Possible AI'],
+    ['sensitive', 'Sensitive: lower cut-offs, more false flags']
+  ];
 
   function formatPoints(points) {
     const value = Number.isFinite(points) ? points : 0;
@@ -552,8 +581,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     badge.dataset.cueTone = cueTone(analysis);
     badge.setAttribute('aria-haspopup', 'dialog');
     badge.setAttribute('aria-expanded', 'false');
-    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', 'AI Detected'));
-    badge.setAttribute('aria-label', 'AI Detected: ' + cueTone(analysis) + ' signal level. ' +
+    badge.appendChild(createElement('span', 'ai-heuristic-badge__text', stampLabel(analysis)));
+    badge.setAttribute('aria-label', stampLabel(analysis) + ': ' + cueTone(analysis) + ' signal level. ' +
       cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched, ' + formatPoints(cues.points) + '. ' +
       cues.coverage.text + '. Writing patterns, not proof of authorship. Open details.');
     badge.addEventListener('pointerenter', (event) => {
@@ -649,6 +678,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       label.appendChild(input);
       controls.appendChild(label);
     }
+    const sensitivityLabel = createElement('label', '', 'Stamp sensitivity');
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Stamp sensitivity');
+    for (const [value, text] of SENSITIVITY_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      option.selected = settings.cueSensitivity === value;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => saveSettings({ cueSensitivity: select.value }));
+    sensitivityLabel.appendChild(select);
+    controls.appendChild(sensitivityLabel);
     section.appendChild(controls);
     return section;
   }
@@ -725,7 +767,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
 
     const header = createElement('div', 'ai-heuristic-popover__header');
     const heading = document.createElement('div');
-    const title = createElement('h2', '', 'AI Detected');
+    const title = createElement('h2', '', stampLabel(analysis));
     title.id = popoverId + '-title';
     heading.appendChild(title);
     popover.setAttribute('aria-labelledby', title.id);
@@ -740,13 +782,15 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     const body = createElement('div', 'ai-heuristic-popover__body');
     const cues = analysis.cueAssessment;
     body.appendChild(createElement('p', 'ai-heuristic-popover__result',
-      (cueTone(analysis) === 'high' ? 'High' : 'Moderate') + ' signal level · ' + cueCount(cues)));
+      ({ high: 'High', moderate: 'Moderate', low: 'Low' })[cueTone(analysis)] + ' signal level · ' + cueCount(cues)));
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
         cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
         'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1; ' +
         'formatting counts 0.5 only alongside another pattern. Moderate starts at 1 point and high at 3. ' +
-        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once.'));
+        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once. ' +
+        'Possible AI means some evidence matched, but less than a moderate stamp needs. Sensitivity: ' +
+        (SENSITIVITY_OPTIONS.find(([value]) => value === (cues.sensitivity || settings.cueSensitivity)) || SENSITIVITY_OPTIONS[1])[1] + '.'));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
@@ -905,7 +949,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       return;
     }
     const links = Array.isArray(content.links) ? content.links.filter((href) => typeof href === 'string').slice(0, 20) : [];
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + links.join(' ') + '\n' + text;
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' + links.join(' ') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {

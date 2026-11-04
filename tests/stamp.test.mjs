@@ -74,8 +74,8 @@ for (const distribution of ['source', 'combined', 'targeted']) {
     assert.equal(badges.length, 2);
     assert.deepEqual(badges.map(b => b.dataset.cueTone), ['moderate', 'high']);
     assert.deepEqual(badges.map(b => b.textContent), ['AI Detected', 'AI Detected']);
-    assert.match(badges[0].getAttribute('aria-label'), /moderate signal level\. 1 of 13 pattern families matched, 1 point\./);
-    assert.match(badges[1].getAttribute('aria-label'), /high signal level\. 3 of 13 pattern families matched, 4\.5 points/);
+    assert.match(badges[0].getAttribute('aria-label'), /moderate signal level\. 1 of 15 pattern families matched, 1 point\./);
+    assert.match(badges[1].getAttribute('aria-label'), /high signal level\. 3 of 15 pattern families matched, 4\.5 points/);
     assert.equal(badges[0].style.getPropertyValue('--aih-post-line-height'), '27px');
     assert.equal(badges[0].style.getPropertyValue('--aih-post-font-size'), '18px');
     assert.ok(window.__controller.getAnalysis(window.document.getElementById('none')));

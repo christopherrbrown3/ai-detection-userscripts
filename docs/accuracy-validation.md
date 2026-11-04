@@ -1,75 +1,84 @@
 # Accuracy validation — 0.10.0
 
-Version 0.10 cut false stamps on pre-ChatGPT human answers from **9.6% to 0.4%** (Reddit ELI5) and from **13.4% to 0.7%** on a held-out finance Q&A set. ChatGPT recall on the same data fell from 69% to 23–26%. Every rule, weight and threshold is still hand-written; nothing is trained or fitted, and everything runs inside the Safari userscript.
+On Reddit posts written by 2023–24 chat models, 0.10 marks **49% as AI Detected while marking 1.1% of human posts**. Release 0.9.1 marked 16.5% at 7.3%. A per-site **Stamp sensitivity** setting trades between the two: Balanced (default) also shows a muted **Possible AI** stamp, and Sensitive catches 79% of AI posts at a 17% human false-positive rate. Every rule, point value and cut-off is hand-written and runs inside the Safari userscript; nothing is trained.
 
-Measured 2026-11-04 with `scripts/evaluate_rubric.mjs` on 10,000 HC3 answers. Aggregates: [accuracy-validation-results.json](accuracy-validation-results.json). Dataset text is not committed.
+Measured 2026-11-04 with `scripts/evaluate_rubric.mjs`. Aggregates: [accuracy-validation-results.json](accuracy-validation-results.json). No dataset text is committed.
 
-## Data and method
+## Data
 
 | Set | Human rows | AI rows | Role |
 | --- | --- | --- | --- |
-| HC3 `reddit_eli5` | 3,000 pre-ChatGPT Reddit answers | 3,000 ChatGPT answers (Dec 2022) | Rule cut-offs were chosen by hand while looking at this set |
-| HC3 `finance` | 2,000 human finance answers | 2,000 ChatGPT answers (Dec 2022) | Held out: checked only after the rules were frozen |
+| [RAID](https://huggingface.co/datasets/liamdugan/raid) Reddit, dev half | 153 Reddit posts | 380 posts by GPT-4, Llama-2-chat, Mistral-chat, MPT-chat | Chatbot-register phrases were mined here |
+| RAID Reddit, test half | 179 | 417 | Held out; reported below |
+| [HC3](https://huggingface.co/datasets/Hello-SimpleAI/HC3) `reddit_eli5` | 3,000 pre-ChatGPT Reddit answers | 3,000 ChatGPT answers (Dec 2022) | Earlier 0.10 cut-offs were chosen by hand here |
+| HC3 `finance` | 2,000 human answers | 2,000 ChatGPT answers (Dec 2022) | Held out |
 
-[HC3](https://huggingface.co/datasets/Hello-SimpleAI/HC3) is CC BY-SA 4.0. `scripts/prepare_hc3.py` samples it deterministically and undoes the PTB-style spacing of the Reddit answers. The human text predates ChatGPT's public release on 30 Nov 2022, so it doubles as a false-positive control set.
+RAID (MIT) prompts chat models to "write the body of a Reddit post titled …" and keeps the real post as the human example; only unattacked rows are used. `scripts/sample_raid_reddit.py` reads 160 evenly spaced 380 KB windows of the 11.8 GB CSV and splits rows 50/50 by title. HC3 is CC BY-SA 4.0; `scripts/prepare_hc3.py` samples it. Its human text predates ChatGPT's public release on 30 Nov 2022.
 
-The harness runs the shipped detector (and, with `--baseline-ref`, any earlier commit) and reports stamp rates, per-family hit rates and Wilson 95% intervals by label and length. "Stamped" means the badge would appear with default settings.
+## Results by sensitivity
 
-## Results
+"AI Detected" is the orange/red stamp. "Any stamp" adds the grey Possible AI stamp. Cells are human posts / AI posts.
 
-| Set | Release | Human stamped | ChatGPT stamped | Precision if 10% of posts are AI |
+| Profile | RAID Reddit (held out), AI Detected | RAID, any stamp | HC3 ELI5, any stamp | HC3 finance (held out), any stamp |
 | --- | --- | --- | --- | --- |
-| ELI5 (tuning) | 0.9.1 | 9.6% [8.6–10.7] | 69.2% [67.5–70.8] | 44% |
-| ELI5 (tuning) | 0.10.0 | 0.4% [0.2–0.7] | 25.6% [24.1–27.2] | 88% |
-| Finance (held out) | 0.9.1 | 13.4% [11.9–14.9] | 68.5% [66.5–70.5] | 36% |
-| Finance (held out) | 0.10.0 | 0.7% [0.4–1.2] | 22.9% [21.1–24.7] | 78% |
+| 0.9.1, for reference | 7.3% / 16.5% | same | 9.6% / 69.2% | 13.4% / 68.5% |
+| Strict | 1.1% / 48.9% | same | 0.4% / 25.6% | 0.7% / 22.9% |
+| **Balanced (default)** | 1.1% / 48.9% | 7.8% / 53.0% | 7.1% / 69.0% | 9.7% / 65.0% |
+| Sensitive | 16.8% / 78.9% | 16.8% / 79.6% | 9.5% / 74.4% | 13.3% / 78.3% |
 
-Precision uses TPR·π / (TPR·π + FPR·(1 − π)) with π = 0.10, an assumed share of AI-written posts, not a measured one.
+Wilson 95% intervals are in the results file. The RAID human sample is small: 1.1% is 2 of 179 posts, with an interval of 0.3–4.0%.
 
-The recall drop is deliberate. In 0.9.1 one rhythm or repetition family was enough to stamp, and those families each matched 2–5% of human answers:
+- **Strict** stamps only on the 0.10 rules: strong artifacts, or pattern families with at least 1 point, where rhythm and repetition alone need two families.
+- **Balanced** keeps exactly those AI Detected stamps and adds **Possible AI** when some evidence matched but less than a moderate stamp needs. That is usually a single rhythm or repetition family, two formatting cues, or a pattern in a short sample.
+- **Sensitive** lowers cut-offs. Weak framing phrases count fully, one chatbot-register phrase is enough, two LLM vocabulary words, one copula/-ing phrase, and plain "not X, but Y" counts fully. One rhythm or formatting family can stamp, short samples can stamp moderate, and the creator-post template counts as a pattern. A single register phrase such as "hey everyone" or "thanks in advance" accounts for most of its extra human flags.
 
-| Family (0.10 tier) | Human, ELI5 | ChatGPT, ELI5 | Human, finance | ChatGPT, finance |
-| --- | --- | --- | --- | --- |
-| Repeated phrases (moderate, needs a pair) | 4.5% | 48.0% | 5.2% | 50.9% |
-| Similar sentence lengths (moderate, needs a pair) | 2.4% | 30.4% | 4.3% | 9.2% |
-| Repeated openings (moderate, needs a pair) | 0.5% | 3.9% | 0.8% | 6.5% |
-| Stock framing (moderate) | 0.0% | 9.4% | 0.1% | 15.0% |
-| Contrast pivots (moderate) | 0.0% | 0.4% | 0.0% | 0.0% |
-| Assistant leftovers (definitive) | 0.0% | 1.0% | 0.0% | 0.3% |
-| Model reference / disclaimer (definitive) | 0.0% | 0.2% | 0.0% | 0.5% |
+## What made the difference
 
-In 0.9.1 stock framing matched 3.1% of human finance answers; in 0.10 it matches 0.1%. Its likelihood ratio rose from 6.5 to 100. Moving `TL;DR`, "if you're", "furthermore" and similar phrases to the weak list or out of the rules accounts for most of that.
+On RAID's Reddit posts the 0.9.1 rhythm and repetition rules do not discriminate at all:
 
-## What HC3 cannot show
+| Family | Human, RAID test | AI, RAID test |
+| --- | --- | --- |
+| Similar sentence lengths | 4.2% | 4.3% |
+| Repeated phrases | 2.4% | 2.3% |
+| Repeated openings | 1.5% | 0.3% |
+| **Chatbot social-post register (new)** | 0.6% | 40.8% |
+| Unedited assistant output | 0.0% | 4.8% |
 
-- **Current models.** December 2022 ChatGPT predates the 2024 surge in words such as *delve* and *tapestry*, rarely uses "not X, but Y" pivots, and HC3 strips its line breaks, lists and Markdown. Recall for the vocabulary, contrast, list and Markdown rules is therefore unmeasured here. HC3 does show their false-positive side: each vocabulary word appeared in at most 0.17% of human answers.
-- **Social posts.** These are Q&A answers, not LinkedIn, X or Facebook posts. Restating the question inflates repeated-phrase hits for ChatGPT.
-- **Mixed and edited text.** HC3 has no human-edited or AI-polished rows.
-- **Cut-off tuning.** Rule cut-offs were picked by hand on ELI5. The finance numbers are the honest held-out check.
+(The first three rows are measured on the whole RAID sample; the last two on the held-out half.)
+
+Chat models writing a "Reddit post" reach for the same formulas: "Hey fellow Redditors", "Any advice would be greatly appreciated", "Thanks in advance", "Has anyone else experienced", "I've been struggling with … for a while now". The new family requires two distinct phrases from a 52-entry list, because people use several of them too. Another 4.8% of AI posts contain unedited assistant output such as "Sure, here's a possible Reddit post:".
+
+On HC3 the rhythm and repetition rules did separate ChatGPT answers (each matched 2–5% of human answers and 10–50% of ChatGPT answers). They are why HC3 recall rises sharply when Possible AI or Sensitive is enabled.
+
+## What this cannot show
+
+- **LinkedIn, X, Facebook and YouTube.** No labeled corpus from these sites was available. The creator-post template (hook line, one-line paragraphs, bullets, an engagement prompt or hashtag block) and LinkedIn sign-off phrases are unmeasured. On RAID and HC3 the template never fired.
+- **Current models.** RAID covers 2023–24 chat models and HC3 December 2022 ChatGPT. Neither shows the 2024 vocabulary surge (*delve*, *tapestry*), so recall for the vocabulary rule is unmeasured; each word appeared in at most 0.17% of human HC3 answers.
+- **Edited or mixed text, and paraphrase attacks.** Only unattacked RAID rows were used.
+- **Small human sample on RAID.** 179 held-out human posts cannot resolve false-positive rates much below 2%.
 
 ## Research methods measured, not shipped
 
-`scripts/evaluate_rubric.mjs --research` scores the methods from the review that were marked "measure before shipping". They live in `research/` and are not bundled into any userscript.
+`--research` scores the methods from the review marked "measure before shipping". They live in `research/` and are not bundled.
 
-| Signal | Source | AUC, ELI5 | AUC, finance | Verdict |
-| --- | --- | --- | --- | --- |
-| ZipPy compression delta | [thinkst/zippy](https://github.com/thinkst/zippy) zlib engine and seed, MIT | 0.954 | 0.952 | Strong ranking, but see below |
-| Agentless passives per 100 words | Reinhart et al. 2025, regex approximation | 0.657 | 0.585 | Weak |
-| Nominalizations per 100 words | Reinhart et al. 2025, suffix approximation | 0.615 | 0.659 | Weak |
-| Clause-initial -ing participles | Reinhart et al. 2025, regex approximation | 0.574 | 0.587 | Weak |
-| slop-score word density | [slop-score](https://github.com/sam-paech/slop-score) lists, MIT, dictionary-filtered | 0.525 | 0.562 | Near chance on Q&A text |
-| slop-score trigram density | same | 0.506 | 0.528 | Near chance |
+| Signal | Source | AUC, HC3 ELI5 | AUC, HC3 finance |
+| --- | --- | --- | --- |
+| ZipPy compression delta | [thinkst/zippy](https://github.com/thinkst/zippy), MIT | 0.954 | 0.952 |
+| Agentless passives per 100 words | Reinhart et al. 2025, regex approximation | 0.657 | 0.585 |
+| Nominalizations per 100 words | Reinhart et al. 2025, suffix approximation | 0.615 | 0.659 |
+| Clause-initial -ing participles | Reinhart et al. 2025, regex approximation | 0.574 | 0.587 |
+| slop-score word density | [slop-score](https://github.com/sam-paech/slop-score), MIT | 0.525 | 0.562 |
+| slop-score trigram density | same | 0.506 | 0.528 |
 
-ZipPy's score is partly a length effect: within length buckets its AUC is 0.91–0.95 for 50+ words but 0.64–0.77 under 50 words. At ZipPy's own zero cut-off it flags 21–31% of human answers, and 46–48% of those over 120 words. It needs a length-aware threshold before it could stamp anything. Its 2023 seed is also close in time to HC3's ChatGPT text, which may flatter it. Browser use would mean bundling the ~85 KB seed and a deflate implementation, or making analysis asynchronous for `CompressionStream`.
-
-The Biber rates use regex stand-ins because a real tagger (compromise, ~250 KB minified) would roughly triple the userscript; that trade-off was not made for signals this weak.
+ZipPy's score is largely a length effect. Within length buckets its AUC is 0.91–0.95 for 50+ words but 0.64–0.77 under 50 words, and at its own zero cut-off it flags 21–31% of human answers. It needs a length-aware threshold, the ~85 KB seed in every bundle, and synchronous deflate before it could stamp.
 
 ## Reproduce
 
 ```bash
+python3 scripts/sample_raid_reddit.py --output-dir training/data
 python3 scripts/prepare_hc3.py --input reddit_eli5.jsonl --output training/data/hc3-eli5.jsonl --per-class 3000
-python3 scripts/prepare_hc3.py --input finance.jsonl --output training/data/hc3-finance.jsonl --per-class 2000
-node scripts/evaluate_rubric.mjs --input training/data/hc3-eli5.jsonl --baseline-ref 6c88973 --research
+python3 scripts/prepare_hc3.py --input finance.jsonl --output training/data/hc3-finance.jsonl --per-class 2000 --seed 1337
+node scripts/evaluate_rubric.mjs --input training/data/raid-reddit-test.jsonl --sensitivity balanced --baseline-ref 6c88973
 ```
 
 `6c88973` is the last 0.9.1 commit. `training/data/` is git-ignored. Any JSONL in the [training schema](../training/README.md) works, including your own exported posts: text you published before 30 Nov 2022 is a human control set that needs no AI labels.

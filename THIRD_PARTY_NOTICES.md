@@ -65,6 +65,7 @@ SOFTWARE.
 ## Data used for measurement only (not distributed)
 
 - **HC3**, https://huggingface.co/datasets/Hello-SimpleAI/HC3, CC BY-SA 4.0. `scripts/prepare_hc3.py` converts files you download yourself. Only aggregate rates are committed, in `docs/accuracy-validation-results.json`.
+- **RAID**, https://huggingface.co/datasets/liamdugan/raid, MIT (Dugan et al., ACL 2024). `scripts/sample_raid_reddit.py` samples its Reddit rows with range requests; only aggregate rates are committed.
 - **dwyl/english-words** `words_alpha.txt`, https://github.com/dwyl/english-words, released into the public domain (Unlicense). Used once to filter invented names out of the slop-score lists; the word list itself is not included.
 
 ## Sources of rule ideas (no code or text copied)
