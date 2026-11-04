@@ -1,6 +1,6 @@
 # Accuracy validation — 0.10.0
 
-On Reddit posts written by 2023–24 chat models, 0.10 marks **49% as AI Detected while marking 1.1% of human posts**. Release 0.9.1 marked 16.5% at 7.3%. A per-site **Stamp sensitivity** setting trades between the two: Balanced (default) also shows a muted **Possible AI** stamp, and Sensitive catches 79% of AI posts at a 17% human false-positive rate. Every rule, point value and cut-off is hand-written and runs inside the Safari userscript; nothing is trained.
+On Reddit posts written by 2023–24 chat models, 0.10 marks **46% as AI Detected while marking 1.1% of human posts**. Release 0.9.1 marked 16.6% at 7.3%. A per-site **Stamp sensitivity** setting trades between the two: Balanced (default) also shows a muted **Possible AI** stamp, and Sensitive catches 79% of AI posts at a 17% human false-positive rate. Every rule, point value and cut-off is hand-written and runs inside the Safari userscript; nothing is trained.
 
 Measured 2026-11-04 with `scripts/evaluate_rubric.mjs`. Aggregates: [accuracy-validation-results.json](accuracy-validation-results.json). No dataset text is committed.
 
@@ -8,12 +8,12 @@ Measured 2026-11-04 with `scripts/evaluate_rubric.mjs`. Aggregates: [accuracy-va
 
 | Set | Human rows | AI rows | Role |
 | --- | --- | --- | --- |
-| [RAID](https://huggingface.co/datasets/liamdugan/raid) Reddit, dev half | 153 Reddit posts | 380 posts by GPT-4, Llama-2-chat, Mistral-chat, MPT-chat | Chatbot-register phrases were mined here |
-| RAID Reddit, test half | 179 | 417 | Held out; reported below |
+| [RAID](https://huggingface.co/datasets/liamdugan/raid) Reddit, dev half | 153 Reddit posts | 378 posts by GPT-4, Llama-2-chat, Mistral-chat, MPT-chat | Chatbot-register phrases were mined here |
+| RAID Reddit, test half | 179 | 416 | Held out; reported below |
 | [HC3](https://huggingface.co/datasets/Hello-SimpleAI/HC3) `reddit_eli5` | 3,000 pre-ChatGPT Reddit answers | 3,000 ChatGPT answers (Dec 2022) | Earlier 0.10 cut-offs were chosen by hand here |
 | HC3 `finance` | 2,000 human answers | 2,000 ChatGPT answers (Dec 2022) | Held out |
 
-RAID (MIT) prompts chat models to "write the body of a Reddit post titled …" and keeps the real post as the human example; only unattacked rows are used. `scripts/sample_raid_reddit.py` reads 160 evenly spaced 380 KB windows of the 11.8 GB CSV and splits rows 50/50 by title. HC3 is CC BY-SA 4.0; `scripts/prepare_hc3.py` samples it. Its human text predates ChatGPT's public release on 30 Nov 2022.
+RAID (MIT) prompts chat models to "write the body of a Reddit post titled …" and keeps the real post as the human example; only unattacked rows are used. `scripts/sample_raid_reddit.py` reads 160 evenly spaced 380 KB windows of the 11.8 GB CSV, drops rows clipped by a window's end, and splits rows 50/50 by title. The harness passes each site adapter's `rendersMarkdown` flag, so Reddit posts are scored as the installed script scores them. HC3 is CC BY-SA 4.0; `scripts/prepare_hc3.py` samples it. Its human text predates ChatGPT's public release on 30 Nov 2022.
 
 ## Results by sensitivity
 
@@ -21,10 +21,10 @@ RAID (MIT) prompts chat models to "write the body of a Reddit post titled …" a
 
 | Profile | RAID Reddit (held out), AI Detected | RAID, any stamp | HC3 ELI5, any stamp | HC3 finance (held out), any stamp |
 | --- | --- | --- | --- | --- |
-| 0.9.1, for reference | 7.3% / 16.5% | same | 9.6% / 69.2% | 13.4% / 68.5% |
-| Strict | 1.1% / 48.9% | same | 0.4% / 25.6% | 0.7% / 22.9% |
-| **Balanced (default)** | 1.1% / 48.9% | 7.8% / 53.0% | 7.1% / 69.0% | 9.7% / 65.0% |
-| Sensitive | 16.8% / 78.9% | 16.8% / 79.6% | 9.5% / 74.4% | 13.3% / 78.3% |
+| 0.9.1, for reference | 7.3% / 16.6% | same | 9.6% / 69.2% | 13.4% / 68.5% |
+| Strict | 1.1% / 46.2% | same | 0.4% / 25.6% | 0.7% / 22.9% |
+| **Balanced (default)** | 1.1% / 46.2% | 7.8% / 50.2% | 7.1% / 69.0% | 9.7% / 65.0% |
+| Sensitive | 16.8% / 78.6% | 16.8% / 79.8% | 9.5% / 74.4% | 13.3% / 78.3% |
 
 Wilson 95% intervals are in the results file. The RAID human sample is small: 1.1% is 2 of 179 posts, with an interval of 0.3–4.0%.
 
@@ -41,12 +41,12 @@ On RAID's Reddit posts the 0.9.1 rhythm and repetition rules do not discriminate
 | Similar sentence lengths | 4.2% | 4.3% |
 | Repeated phrases | 2.4% | 2.3% |
 | Repeated openings | 1.5% | 0.3% |
-| **Chatbot social-post register (new)** | 0.6% | 40.8% |
+| **Chatbot social-post register (new)** | 0.6% | 39.9% |
 | Unedited assistant output | 0.0% | 4.8% |
 
 (The first three rows are measured on the whole RAID sample; the last two on the held-out half.)
 
-Chat models writing a "Reddit post" reach for the same formulas: "Hey fellow Redditors", "Any advice would be greatly appreciated", "Thanks in advance", "Has anyone else experienced", "I've been struggling with … for a while now". The new family requires two distinct phrases from a 52-entry list, because people use several of them too. Another 4.8% of AI posts contain unedited assistant output such as "Sure, here's a possible Reddit post:".
+Chat models writing a "Reddit post" reach for the same formulas: "Hey fellow Redditors", "Any advice would be greatly appreciated", "Thanks in advance", "Has anyone else experienced", "I've been struggling with … for a while now". The new family requires two distinct, non-overlapping phrases from a 52-entry list, because people use several of them too; one sentence such as "Any advice would be greatly appreciated" counts once. Another 4.8% of AI posts contain unedited assistant output such as "Sure, here's a possible Reddit post:".
 
 On HC3 the rhythm and repetition rules did separate ChatGPT answers (each matched 2–5% of human answers and 10–50% of ChatGPT answers). They are why HC3 recall rises sharply when Possible AI or Sensitive is enabled.
 

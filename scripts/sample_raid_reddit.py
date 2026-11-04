@@ -45,8 +45,10 @@ def rows_at(offset: int, length: int = 380_000) -> list[list[str]]:
     body = text[start.start() + 1:]
     body = body[:body.rfind("\n")]
     rows = []
+    # strict=True raises at an unterminated quoted field, so a generation clipped
+    # by the window's end is dropped instead of entering the data truncated.
     try:
-        for row in csv.reader(io.StringIO(body)):
+        for row in csv.reader(io.StringIO(body), strict=True):
             if len(row) >= 11 and re.fullmatch(UUID, row[0]):
                 rows.append(row)
     except csv.Error:

@@ -517,6 +517,18 @@ function createDetectorEngine(options) {
       .filter((span, index, all) => !all.slice(0, index).some((prior) => prior.start <= span.start && prior.end >= span.end));
   }
 
+  // Distinct-phrase rules count only non-overlapping matches, so one sentence
+  // such as "Any advice would be greatly appreciated" cannot satisfy "two
+  // distinct phrases" through overlapping list entries. Earliest, then
+  // longest, match wins.
+  function nonOverlapping(spans) {
+    const kept = [];
+    for (const span of spans.slice().sort((a, b) => a.start - b.start || b.end - a.end)) {
+      if (!kept.length || span.start >= kept[kept.length - 1].end) kept.push(span);
+    }
+    return kept;
+  }
+
   function termSpans(parsed, compiled) {
     const text = normalizeApostrophes(parsed.masked);
     const spans = [];
@@ -529,7 +541,7 @@ function createDetectorEngine(options) {
         if (!parsed.excluded.some((span) => start < span.end && end > span.start)) spans.push({ start, end, key });
       }
     }
-    return dropNested(spans);
+    return nonOverlapping(spans);
   }
 
   function regexSpans(text, re, excluded) {
@@ -568,6 +580,33 @@ function createDetectorEngine(options) {
       value = inner;
     }
     return null;
+  }
+
+  // Links arrive as hrefs or {href, text}. The reader already skips links in
+  // blockquote/q/code elements; this also drops a link whose anchor text occurs
+  // only inside inline quotation marks or backticks that the parser masked.
+  function linksOutsideExclusions(parsed, links) {
+    const hrefs = [];
+    for (const link of Array.isArray(links) ? links : []) {
+      const href = typeof link === 'string' ? link : link && typeof link.href === 'string' ? link.href : '';
+      if (!href) continue;
+      const label = typeof link === 'object' && typeof link.text === 'string' ? normalizeText(link.text).replace(/\s+/g, ' ') : '';
+      if (label) {
+        const haystack = parsed.raw.replace(/\s/g, ' ');
+        let index = haystack.indexOf(label);
+        let found = false;
+        let outside = false;
+        while (index !== -1) {
+          found = true;
+          const end = index + label.length;
+          if (!parsed.excluded.some((span) => index < span.end && end > span.start)) { outside = true; break; }
+          index = haystack.indexOf(label, index + 1);
+        }
+        if (found && !outside) continue;
+      }
+      hrefs.push(href);
+    }
+    return hrefs;
   }
 
   function scoreFamilies(families, coverage, assessed, profile) {
@@ -659,7 +698,7 @@ function createDetectorEngine(options) {
       }
 
       const referralSpans = regexSpans(norm, AI_REFERRAL_TEXT, parsed.excluded);
-      const referralLinks = Array.from(new Set((options.links || []).map(aiReferralSource).filter(Boolean)));
+      const referralLinks = Array.from(new Set(linksOutsideExclusions(parsed, options.links).map(aiReferralSource).filter(Boolean)));
       if (referralSpans.length || referralLinks.length) {
         add('ai-referral-link', 'Link copied from an AI assistant',
           (referralLinks.length ? 'Linked URL carries ' + referralLinks.join(', ') + '. ' : '') +

@@ -4,7 +4,7 @@ The installed userscripts never download a model or transmit text. This director
 
 ## Feature compatibility
 
-Userscript 0.8 uses the `stylometry-v4-charhash128` diagnostic feature set. Model-reference and list-marker features now mirror the revised browser rules. Previous learned weights require retraining and held-out validation against these changed feature definitions before release. Training output records its feature-set version, and the exporter rejects older or unversioned weights. The shipped hand-tuned weights remain an uncalibrated diagnostic baseline; this release adds no trained classifier or benchmark accuracy claim.
+Userscript 0.10 uses the `stylometry-v5-charhash128` diagnostic feature set: emoji and keycap bullets now count as list markers, and abbreviations such as `a.m.`, `Inc.` and `No. 5` no longer split sentences, which changes `listMarkerCount` and the sentence-length features. Previous learned weights require retraining and held-out validation against these changed feature definitions before release. Training output records its feature-set version, and the exporter rejects older or unversioned weights. The shipped hand-tuned weights remain an uncalibrated diagnostic baseline; this release adds no trained classifier or benchmark accuracy claim.
 
 ## Install
 

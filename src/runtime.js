@@ -28,7 +28,9 @@ function aiHeuristicReadContent(node, options = {}) {
     if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
     if (current.tagName === 'A' && links.length < 20) {
       const href = current.getAttribute('href');
-      if (href && !links.includes(href)) links.push(href);
+      // The anchor text lets the detector drop links inside inline quotation marks.
+      const text = (current.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (href && !links.some((link) => link.href === href && link.text === text)) links.push({ href, text });
     }
     const block = blocks.has(current.tagName);
     // A list item's own paragraphs stay on its marked line. Nested lists
@@ -535,6 +537,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return cueTone(analysis) === 'low' ? 'Possible AI' : 'AI Detected';
   }
 
+  // Describes the scoring rules of the profile that produced this analysis.
+  function sensitivityExplanation(profile) {
+    const option = SENSITIVITY_OPTIONS.find(([value]) => value === profile) || SENSITIVITY_OPTIONS[1];
+    const sensitive = option[0] === 'sensitive';
+    return 'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1. ' +
+      'Moderate starts at 1 point and high at 3. Repeated matches within one family count once. ' +
+      (sensitive
+        ? 'In Sensitive mode cut-offs are lower: formatting counts 0.5 on its own, one rhythm, repetition or register cue can stamp, and short samples can stamp. '
+        : 'Formatting counts 0.5 only alongside another pattern, and rhythm or repetition alone needs two patterns. ') +
+      (option[0] === 'strict' ? 'Strict mode hides weaker evidence. ' : 'Possible AI means some evidence matched, but less than a moderate stamp needs. ') +
+      'Sensitivity: ' + option[1] + '.';
+  }
+
   const SENSITIVITY_OPTIONS = [
     ['strict', 'Strict: strong evidence only'],
     ['balanced', 'Balanced: also show Possible AI'],
@@ -786,11 +801,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
         cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
-        'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1; ' +
-        'formatting counts 0.5 only alongside another pattern. Moderate starts at 1 point and high at 3. ' +
-        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once. ' +
-        'Possible AI means some evidence matched, but less than a moderate stamp needs. Sensitivity: ' +
-        (SENSITIVITY_OPTIONS.find(([value]) => value === (cues.sensitivity || settings.cueSensitivity)) || SENSITIVITY_OPTIONS[1])[1] + '.'));
+        sensitivityExplanation(cues.sensitivity || settings.cueSensitivity)));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
@@ -948,8 +959,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       records.delete(element);
       return;
     }
-    const links = Array.isArray(content.links) ? content.links.filter((href) => typeof href === 'string').slice(0, 20) : [];
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' + links.join(' ') + '\n' + text;
+    const links = (Array.isArray(content.links) ? content.links : []).map((link) => typeof link === 'string' ? { href: link, text: '' } :
+      link && typeof link.href === 'string' ? { href: link.href, text: typeof link.text === 'string' ? link.text : '' } : null)
+      .filter(Boolean).slice(0, 20);
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' +
+      links.map((link) => link.href + '\t' + link.text).join('\n') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
@@ -1243,7 +1257,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
-      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', ...(adapter.observedAttributes || [])])]
+      // href is observed because AI-referral links are read from link targets.
+      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', 'href', ...(adapter.observedAttributes || [])])]
     });
   }
 

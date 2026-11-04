@@ -126,7 +126,7 @@ def count_phrase_hits(text: str, phrases: Iterable[str]) -> int:
     return total
 
 
-FEATURE_SET = "stylometry-v4-charhash128"
+FEATURE_SET = "stylometry-v5-charhash128"
 
 MODEL_REFERENCE_RE = re.compile(
     r"(?:^|[^\w]|_)((?:as an ai(?: language model| assistant)?|as a language model|"

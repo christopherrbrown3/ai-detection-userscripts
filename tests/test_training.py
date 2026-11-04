@@ -127,7 +127,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 text=True,
             )
             weights = json.loads((output_dir / "weights.json").read_text(encoding="utf-8"))
-            self.assertEqual(weights["feature_set"], "stylometry-v4-charhash128")
+            self.assertEqual(weights["feature_set"], "stylometry-v5-charhash128")
             report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
             model = weights["models"]["x:post"]
             self.assertEqual(len(model["charNgramWeights"]), 128)

@@ -544,6 +544,18 @@ function createDetectorEngine(options) {
       .filter((span, index, all) => !all.slice(0, index).some((prior) => prior.start <= span.start && prior.end >= span.end));
   }
 
+  // Distinct-phrase rules count only non-overlapping matches, so one sentence
+  // such as "Any advice would be greatly appreciated" cannot satisfy "two
+  // distinct phrases" through overlapping list entries. Earliest, then
+  // longest, match wins.
+  function nonOverlapping(spans) {
+    const kept = [];
+    for (const span of spans.slice().sort((a, b) => a.start - b.start || b.end - a.end)) {
+      if (!kept.length || span.start >= kept[kept.length - 1].end) kept.push(span);
+    }
+    return kept;
+  }
+
   function termSpans(parsed, compiled) {
     const text = normalizeApostrophes(parsed.masked);
     const spans = [];
@@ -556,7 +568,7 @@ function createDetectorEngine(options) {
         if (!parsed.excluded.some((span) => start < span.end && end > span.start)) spans.push({ start, end, key });
       }
     }
-    return dropNested(spans);
+    return nonOverlapping(spans);
   }
 
   function regexSpans(text, re, excluded) {
@@ -595,6 +607,33 @@ function createDetectorEngine(options) {
       value = inner;
     }
     return null;
+  }
+
+  // Links arrive as hrefs or {href, text}. The reader already skips links in
+  // blockquote/q/code elements; this also drops a link whose anchor text occurs
+  // only inside inline quotation marks or backticks that the parser masked.
+  function linksOutsideExclusions(parsed, links) {
+    const hrefs = [];
+    for (const link of Array.isArray(links) ? links : []) {
+      const href = typeof link === 'string' ? link : link && typeof link.href === 'string' ? link.href : '';
+      if (!href) continue;
+      const label = typeof link === 'object' && typeof link.text === 'string' ? normalizeText(link.text).replace(/\s+/g, ' ') : '';
+      if (label) {
+        const haystack = parsed.raw.replace(/\s/g, ' ');
+        let index = haystack.indexOf(label);
+        let found = false;
+        let outside = false;
+        while (index !== -1) {
+          found = true;
+          const end = index + label.length;
+          if (!parsed.excluded.some((span) => index < span.end && end > span.start)) { outside = true; break; }
+          index = haystack.indexOf(label, index + 1);
+        }
+        if (found && !outside) continue;
+      }
+      hrefs.push(href);
+    }
+    return hrefs;
   }
 
   function scoreFamilies(families, coverage, assessed, profile) {
@@ -686,7 +725,7 @@ function createDetectorEngine(options) {
       }
 
       const referralSpans = regexSpans(norm, AI_REFERRAL_TEXT, parsed.excluded);
-      const referralLinks = Array.from(new Set((options.links || []).map(aiReferralSource).filter(Boolean)));
+      const referralLinks = Array.from(new Set(linksOutsideExclusions(parsed, options.links).map(aiReferralSource).filter(Boolean)));
       if (referralSpans.length || referralLinks.length) {
         add('ai-referral-link', 'Link copied from an AI assistant',
           (referralLinks.length ? 'Linked URL carries ' + referralLinks.join(', ') + '. ' : '') +
@@ -1373,7 +1412,9 @@ function aiHeuristicReadContent(node, options = {}) {
     if (current.tagName === 'BR') { parts.push(inList ? ' ' : '\n'); return; }
     if (current.tagName === 'A' && links.length < 20) {
       const href = current.getAttribute('href');
-      if (href && !links.includes(href)) links.push(href);
+      // The anchor text lets the detector drop links inside inline quotation marks.
+      const text = (current.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (href && !links.some((link) => link.href === href && link.text === text)) links.push({ href, text });
     }
     const block = blocks.has(current.tagName);
     // A list item's own paragraphs stay on its marked line. Nested lists
@@ -1880,6 +1921,19 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     return cueTone(analysis) === 'low' ? 'Possible AI' : 'AI Detected';
   }
 
+  // Describes the scoring rules of the profile that produced this analysis.
+  function sensitivityExplanation(profile) {
+    const option = SENSITIVITY_OPTIONS.find(([value]) => value === profile) || SENSITIVITY_OPTIONS[1];
+    const sensitive = option[0] === 'sensitive';
+    return 'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1. ' +
+      'Moderate starts at 1 point and high at 3. Repeated matches within one family count once. ' +
+      (sensitive
+        ? 'In Sensitive mode cut-offs are lower: formatting counts 0.5 on its own, one rhythm, repetition or register cue can stamp, and short samples can stamp. '
+        : 'Formatting counts 0.5 only alongside another pattern, and rhythm or repetition alone needs two patterns. ') +
+      (option[0] === 'strict' ? 'Strict mode hides weaker evidence. ' : 'Possible AI means some evidence matched, but less than a moderate stamp needs. ') +
+      'Sensitivity: ' + option[1] + '.';
+  }
+
   const SENSITIVITY_OPTIONS = [
     ['strict', 'Strict: strong evidence only'],
     ['balanced', 'Balanced: also show Possible AI'],
@@ -2131,11 +2185,7 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     if (cues.assessed) {
       body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
         cues.families.length + ' of ' + cues.totalFamilies + ' pattern families matched (' + formatPoints(cues.points) + '). ' +
-        'Strong artifacts such as model self-references or unfilled placeholders count 3 points; other patterns count 1; ' +
-        'formatting counts 0.5 only alongside another pattern. Moderate starts at 1 point and high at 3. ' +
-        'Rhythm and repetition alone need two patterns. Repeated matches within one family count once. ' +
-        'Possible AI means some evidence matched, but less than a moderate stamp needs. Sensitivity: ' +
-        (SENSITIVITY_OPTIONS.find(([value]) => value === (cues.sensitivity || settings.cueSensitivity)) || SENSITIVITY_OPTIONS[1])[1] + '.'));
+        sensitivityExplanation(cues.sensitivity || settings.cueSensitivity)));
     }
     body.appendChild(createElement('p', 'ai-heuristic-popover__summary',
       analysis.metrics.wordCount + ' words · ' + analysis.metrics.sentenceCount + ' sentences or list items. ' + cues.coverage.reason));
@@ -2293,8 +2343,11 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
       records.delete(element);
       return;
     }
-    const links = Array.isArray(content.links) ? content.links.filter((href) => typeof href === 'string').slice(0, 20) : [];
-    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' + links.join(' ') + '\n' + text;
+    const links = (Array.isArray(content.links) ? content.links : []).map((link) => typeof link === 'string' ? { href: link, text: '' } :
+      link && typeof link.href === 'string' ? { href: link.href, text: typeof link.text === 'string' ? link.text : '' } : null)
+      .filter(Boolean).slice(0, 20);
+    const cacheKey = kind + '\n' + excluded.quotes + ':' + excluded.code + '\n' + settings.cueSensitivity + '\n' +
+      links.map((link) => link.href + '\t' + link.text).join('\n') + '\n' + text;
     const fingerprint = hashText(cacheKey);
     if (previous && previous.fingerprint === fingerprint && previous.text === text &&
       (!previous.badge || previous.badge.isConnected)) {
@@ -2588,7 +2641,8 @@ function startAIHeuristic(platformAdapter, modelBundle, options) {
     observer = new MutationObserver(onMutations);
     observer.observe(document.body, {
       childList: true, subtree: true, characterData: true,
-      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', ...(adapter.observedAttributes || [])])]
+      // href is observed because AI-referral links are read from link targets.
+      attributes: true, attributeFilter: [...new Set(['lang', 'class', 'role', 'data-testid', 'slot', 'href', ...(adapter.observedAttributes || [])])]
     });
   }
 
@@ -2924,5 +2978,5 @@ function createPlatformAdapter() {
 return createPlatformAdapter();
 }
   };
-  bootAIHeuristic([{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v4-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.10.0",distribution:"targeted"});
+  bootAIHeuristic([{"id":"reddit","name":"Reddit","hosts":["www.reddit.com","reddit.com","old.reddit.com","www.old.reddit.com"],"status":"stable","capabilities":["current Reddit","old Reddit","posts","comments","nested replies"],"excludedPaths":["/message","/chat"]}], factories, {"schema_version":2,"metadata":{"version":"0.2.0","calibrated":false,"provenance":"Hand-tuned experimental baseline retained for continuity; weights are unchanged as feature definitions evolve. Replace with offline-trained and held-out calibrated models before treating scores as probabilities.","feature_set":"stylometry-v5-charhash128"},"models":{"reddit:post":{"intercept":-0.3,"weights":{"aiHedgePresent":2.1,"templatePer100w":0.7,"discoursePer100w":0.55,"bigramRepeatRatio":1.0,"trigramRepeatRatio":0.6,"sentenceStarterRepeatRatio":0.5,"buzzPer100w":0.35,"mattr25":-0.75,"sentenceLenCV":-0.7,"avgSentenceLen":0.55,"wordLenCV":-0.18,"paragraphLenCV":-0.18,"contractionRatio":-0.16,"listMarkerCount":0.3,"colonPer100w":0.18,"commaPer100w":0.14,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.22},"calibration":null,"thresholds":{"moderate":0.56,"strong":0.74,"target_fpr":null,"method":"experimental-default"}},"reddit:comment":{"intercept":-0.45,"weights":{"aiHedgePresent":2.0,"templatePer100w":0.65,"discoursePer100w":0.45,"bigramRepeatRatio":0.9,"trigramRepeatRatio":0.5,"sentenceStarterRepeatRatio":0.45,"mattr25":-0.65,"sentenceLenCV":-0.65,"avgSentenceLen":0.45,"wordLenCV":-0.15,"contractionRatio":-0.16,"exclamationsPer100w":0.1,"questionsPer100w":0.1,"topWordShare":0.2},"calibration":null,"thresholds":{"moderate":0.59,"strong":0.77,"target_fpr":null,"method":"experimental-default"}}}}, {version:"0.10.0",distribution:"targeted"});
 })();

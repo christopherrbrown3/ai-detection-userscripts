@@ -69,8 +69,8 @@ The **Style cue settings** button remains available when every badge is hidden. 
 - comments/replies on or off
 - hide signals in short samples
 - **Stamp sensitivity**, measured on RAID's Reddit posts from 2023–24 chat models (human / AI posts stamped):
-  - **Strict:** AI Detected only. 1.1% / 49%.
-  - **Balanced (default):** the same AI Detected stamps, plus Possible AI for weaker evidence. 7.8% / 53% with any stamp.
+  - **Strict:** AI Detected only. 1.1% / 46%.
+  - **Balanced (default):** the same AI Detected stamps, plus Possible AI for weaker evidence. 7.8% / 50% with any stamp.
   - **Sensitive:** lower cut-offs; one rhythm, formatting or register cue can stamp, and the creator-post template counts as a pattern. 17% / 79%. Useful on LinkedIn if you would rather over-flag; LinkedIn itself is unmeasured.
 
 Zero-match and unassessed posts always stay unbadged. Older saved settings remain readable; the old zero-match visibility preference no longer changes this behavior. See the [0.9 stamp validation report](docs/stamp-validation.md) and [0.9.1 header placement checks](docs/header-stamp-validation.md) for verification and limits.
@@ -112,7 +112,7 @@ The root userscripts are generated from one registry, shared detector/runtime/bo
 
 The default installed behavior is an explicitly **heuristic cue rubric**, not a trained authorship classifier. Every rule, point value and threshold is hand-written and runs inside the userscript; nothing is trained. Unsupported or uncertain language is skipped, and posts below the stamp threshold have no badge. It makes no probability claim. Human professional writing can contain these patterns, while generated or heavily edited text can avoid them.
 
-Version 0.10 measures the rubric on labeled text with `scripts/evaluate_rubric.mjs` and tunes cut-offs by hand against false-positive rates. On held-out RAID Reddit posts by 2023–24 chat models, AI Detected catches 49% of AI posts and 1.1% of human posts (0.9.1: 16.5% and 7.3%). On HC3's pre-ChatGPT human answers it stamps 0.4–0.7% in Strict. No labeled LinkedIn, X, Facebook or YouTube corpus was available, so those sites are unmeasured. ZipPy compression, Biber-style grammar rates and slop-score lists were measured but not shipped. See the [0.10 accuracy validation](docs/accuracy-validation.md).
+Version 0.10 measures the rubric on labeled text with `scripts/evaluate_rubric.mjs` and tunes cut-offs by hand against false-positive rates. On held-out RAID Reddit posts by 2023–24 chat models, AI Detected catches 46% of AI posts and 1.1% of human posts (0.9.1: 16.6% and 7.3%). On HC3's pre-ChatGPT human answers it stamps 0.4–0.7% in Strict. No labeled LinkedIn, X, Facebook or YouTube corpus was available, so those sites are unmeasured. ZipPy compression, Biber-style grammar rates and slop-score lists were measured but not shipped. See the [0.10 accuracy validation](docs/accuracy-validation.md).
 
 Version 0.9 adds two rule-only checks from the [browser detection research](docs/research/2026-10-28-browser-ai-text-detection.md): recognizable assistant artifacts and repeated contrast constructions. No model training, inference runtime, new runtime dependency, or network service is needed. Diagnostic feature definitions and model weights are unchanged. The [stamp validation report](docs/stamp-validation.md) records the chosen rules and their limits.
 

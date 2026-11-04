@@ -234,3 +234,70 @@ test('stamp sensitivity setting switches between strict, Possible AI and sensiti
   window.__controller.scanNow();
   assert.equal(window.document.querySelector('#u .ai-heuristic-badge'), null);
 });
+
+test('overlapping list entries count as one phrase (PR #16 review)', () => {
+  const help = 'My sleep schedule has been a mess since the move and I keep waking up at three in the morning, even on weekends. Any advice would be greatly appreciated.';
+  const result = cues(help);
+  assert.ok(!result.families.some((family) => family.id === 'chatbot-register'), 'one sentence cannot supply two distinct phrases');
+  assert.equal(result.stamp, 'none');
+  assert.ok(!ids('Feel free to share your thoughts on the new schedule, since the old one kept everyone up past midnight on weekdays.').includes('chatbot-register'));
+});
+
+test('links whose anchor text sits inside inline quotation marks are ignored (PR #16 review)', () => {
+  const href = 'https://example.com/story?utm_source=chatgpt.com';
+  const quoted = 'My colleague wrote “see the report for details” and then we went back to repairing the gate after work yesterday evening.';
+  assert.ok(!ids(quoted, { links: [{ href, text: 'the report' }] }).includes('ai-referral-link'));
+  const plainText = 'See the report for details. We went back to repairing the gate after work yesterday evening with the old latch.';
+  assert.ok(ids(plainText, { links: [{ href, text: 'the report' }] }).includes('ai-referral-link'));
+  assert.ok(ids(plainText, { links: [href] }).includes('ai-referral-link'), 'plain href strings remain supported');
+});
+
+test('an href change on an existing link re-analyzes its post (PR #16 review)', async () => {
+  const body = 'This article on battery recycling is worth a read. We repaired the gate after work yesterday and the latch still closes with a gentle push.';
+  const html = '<!doctype html><body><article role="article" id="p"><div data-testid="User-Name">Example</div><div data-testid="tweetText">' + body +
+    ' <a id="l" href="https://example.com/story?utm_source=newsletter">example.com/story</a></div></article></body>';
+  const { window } = loadDom('x', html, 'https://x.com/home');
+  assert.equal(window.document.querySelector('#p .ai-heuristic-badge'), null);
+  window.document.getElementById('l').setAttribute('href', 'https://example.com/story?utm_source=chatgpt.com');
+  const deadline = Date.now() + 2000;
+  while (!window.document.querySelector('#p .ai-heuristic-badge') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(window.document.querySelector('#p .ai-heuristic-badge'));
+});
+
+test('the details panel describes the active sensitivity profile (PR #16 review)', () => {
+  const uniform = 'The team met early on Monday to plan the week. Everyone brought notes from the previous sprint review. We listed the tasks that still needed an owner. Then we matched each task with a person. The meeting ended a little before ten.';
+  const html = '<!doctype html><body><article role="article" id="u"><div data-testid="User-Name">Example</div><div data-testid="tweetText">' + uniform + '</div></article></body>';
+  for (const [sensitivity, expected, absent] of [
+    ['sensitive', /In Sensitive mode cut-offs are lower/, /only alongside another pattern/],
+    ['balanced', /only alongside another pattern.*Possible AI means/, /In Sensitive mode/]
+  ]) {
+    const { window } = loadDom('x', html, 'https://x.com/home', { setup(w) { w.localStorage.setItem('ai-heuristic:x:settings:v2', JSON.stringify({ cueSensitivity: sensitivity })); } });
+    window.document.querySelector('#u .ai-heuristic-badge').click();
+    const text = window.document.querySelector('.ai-heuristic-popover').textContent;
+    assert.match(text, expected, sensitivity);
+    assert.doesNotMatch(text, absent, sensitivity);
+    window.close();
+  }
+});
+
+test('evaluation harness honors --limit across inputs and each site\'s Markdown flag (PR #16 review)', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rubric-'));
+  const markdown = '**Weekend Repair Notes**\nWe fixed the gate after work yesterday and the latch still closes with a gentle push. The dog stayed inside all evening.';
+  const row = (platform) => JSON.stringify({ text: markdown, authorship: 'human', platform, kind: 'post' });
+  fs.writeFileSync(path.join(dir, 'a.jsonl'), [row('reddit'), row('reddit')].join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'b.jsonl'), [row('linkedin'), row('linkedin')].join('\n') + '\n');
+  const run = (...args) => {
+    const out = path.join(dir, 'out.json');
+    execFileSync('node', ['scripts/evaluate_rubric.mjs', ...args, '--sensitivity', 'strict', '--json', out], { stdio: 'pipe' });
+    return JSON.parse(fs.readFileSync(out, 'utf8'));
+  };
+  assert.equal(run('--input', path.join(dir, 'a.jsonl'), '--input', path.join(dir, 'b.jsonl'), '--limit', '2').n, 2);
+  const reddit = run('--input', path.join(dir, 'a.jsonl')).engines.current;
+  assert.equal(reddit.families['markup-artifacts'], undefined, 'Reddit renders Markdown');
+  const linkedinRun = run('--input', path.join(dir, 'b.jsonl')).engines.current;
+  assert.equal(linkedinRun.families['markup-artifacts'].human.hits, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

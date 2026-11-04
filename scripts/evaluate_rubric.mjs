@@ -5,7 +5,7 @@
 //     [--baseline-ref <git-ref>] [--sensitivity strict|balanced|sensitive] [--research] [--limit N] [--json out.json]
 //
 // Rows follow training/README.md: {text, authorship: human|ai|mixed, platform?,
-// kind?, links?}. Text published before 30 Nov 2022 can serve as a human-only
+// kind?, links?, rendersMarkdown?}; rendersMarkdown defaults to the site adapter's flag. Text published before 30 Nov 2022 can serve as a human-only
 // false-positive control set without any AI-labeled data.
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -51,6 +51,14 @@ if (research) {
 }
 
 const PLATFORMS = new Set(['linkedin', 'x', 'reddit', 'facebook', 'youtube']);
+// Pass each site's rendersMarkdown flag exactly as the runtime does, read from
+// the adapter itself (factories are side-effect-free). Reddit renders Markdown,
+// so literal **bold** there must not count as a paste artifact.
+const RENDERS_MARKDOWN = Object.fromEntries([...PLATFORMS].map((id) => {
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(new URL('src/platforms/' + id + '.js', root), 'utf8') + '\nthis.adapter = createPlatformAdapter();', context);
+  return [id, context.adapter.rendersMarkdown === true];
+}));
 function engineFactory(source) {
   const context = vm.createContext({ modelBundle });
   vm.runInContext(source + '\nthis.create = createDetectorEngine;', context);
@@ -108,6 +116,7 @@ function auc(humanValues, aiValues) {
 
 const rows = [];
 for (const path of inputs) {
+  if (rows.length >= limit) break;
   for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     const row = JSON.parse(line);
@@ -126,8 +135,12 @@ for (const [name, source] of Object.entries(sources)) {
   const byLength = {};
   const researchValues = {};
   for (const row of rows) {
-    const engine = engineFor(String(row.platform || 'unknown'));
-    const analysis = engine.analyze(String(row.text || ''), { kind: row.kind === 'post' ? 'post' : 'comment', links: Array.isArray(row.links) ? row.links : [] }, { cueSensitivity: sensitivity });
+    const platform = String(row.platform || 'unknown');
+    const engine = engineFor(platform);
+    const rendersMarkdown = typeof row.rendersMarkdown === 'boolean' ? row.rendersMarkdown : RENDERS_MARKDOWN[platform] === true;
+    const analysis = engine.analyze(String(row.text || ''), {
+      kind: row.kind === 'post' ? 'post' : 'comment', links: Array.isArray(row.links) ? row.links : [], rendersMarkdown
+    }, { cueSensitivity: sensitivity });
     const stamp = stampOf(analysis);
     const label = row.label;
     const entry = byLabel[label] || (byLabel[label] = { n: 0, assessed: 0, stamped: 0, high: 0, possible: 0 });
